@@ -360,6 +360,8 @@ func (mi *ModelItem[model]) Tags() {
 	mi.modelType = reflect.TypeOf(mi.model).Elem()
 	lenField := mi.modelType.NumField()
 	f := []reflect.StructField{}
+	hasId := false
+	hasDeleted := false
 	for i := 0; i < lenField; i++ {
 		fld := mi.modelType.Field(i).Tag
 		hasJson := fld.Get("json")
@@ -378,18 +380,29 @@ func (mi *ModelItem[model]) Tags() {
 			Type: field.Type,
 			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" bson:"%s"`, hasJson, hasBson)),
 		})
+		if name == "Id" {
+			hasId = true
+		}
+		if name == "IsDeleted" {
+			hasDeleted = true
+		}
 	}
-	f = append(f, reflect.StructField{
-		Name: "Id",
-		Type: reflect.TypeOf(primitive.ObjectID{}),
-		Tag:  reflect.StructTag(`json:"id,omitempty" bson:"_id,omitempty"`),
-	})
-	if mi.SoftDelete {
+	if !hasId {
 		f = append(f, reflect.StructField{
-			Name: "IsDeleted",
-			Type: reflect.TypeOf(true),
-			Tag:  reflect.StructTag(`json:"-" bson:"is_deleted"`),
+			Name: "Id",
+			Type: reflect.TypeOf(primitive.ObjectID{}),
+			Tag:  reflect.StructTag(`json:"id,omitempty" bson:"_id,omitempty"`),
 		})
+	}
+
+	if mi.SoftDelete {
+		if !hasDeleted {
+			f = append(f, reflect.StructField{
+				Name: "IsDeleted",
+				Type: reflect.TypeOf(true),
+				Tag:  reflect.StructTag(`json:"-" bson:"is_deleted"`),
+			})
+		}
 	}
 	mi.model = reflect.StructOf(f)
 }
