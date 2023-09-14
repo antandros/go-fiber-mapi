@@ -157,6 +157,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 		if founded.IsPublic {
 			return c.Next()
 		}
+		c.Locals("model", founded)
 		extraQuery, err := app.authMiddleware(c)
 		if err != nil {
 			return c.Status(401).JSON(Response{
