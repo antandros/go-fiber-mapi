@@ -80,6 +80,7 @@ type App struct {
 	Name           string
 	Description    string
 	BaseURL        string
+	Debug          bool
 }
 
 func (app *App) CreateConnection() {
@@ -266,10 +267,12 @@ func (app *App) AggrageteCollection(collection string, query []M) (*mongo.Cursor
 	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query)
 }
 func (app *App) Run(host string) {
-	fapp := fiber.New(fiber.Config{
+	fConfig := fiber.Config{
 		ReadTimeout:  time.Second * 10,
 		WriteTimeout: time.Second * 10,
-		ErrorHandler: func(ctx *fiber.Ctx, err error) error {
+	}
+	if !app.Debug {
+		fConfig.ErrorHandler = func(ctx *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			// Retrieve the custom status code if it's a *fiber.Error
 			var e *fiber.Error
@@ -288,8 +291,9 @@ func (app *App) Run(host string) {
 				Error:      M{"error_id": errid},
 				Message:    "internal server error",
 			})
-		},
-	})
+		}
+	}
+	fapp := fiber.New(fConfig)
 	fapp.Use(fiberzap.New(fiberzap.Config{
 		Logger: app.GetZap(),
 		FieldsFunc: func(c *fiber.Ctx) []zap.Field {
@@ -308,16 +312,19 @@ func (app *App) Run(host string) {
 		return c.Next()
 	})
 	fapp.Get("/metrics", monitor.New())
-	fapp.Use(recover.New(
-		recover.Config{
-			EnableStackTrace: true,
-			StackTraceHandler: func(c *fiber.Ctx, e interface{}) {
-				err := fmt.Sprintf("panic: %v\n%s\n", e, debug.Stack())
-				reqId := c.UserContext().Value("request_id").(string)
-				app.errorLogger.Error("Error", zap.Error(e.(error)), zap.String("request_id", reqId), zap.String("stack", err))
+	if !app.Debug {
+
+		fapp.Use(recover.New(
+			recover.Config{
+				EnableStackTrace: true,
+				StackTraceHandler: func(c *fiber.Ctx, e interface{}) {
+					err := fmt.Sprintf("panic: %v\n%s\n", e, debug.Stack())
+					reqId := c.UserContext().Value("request_id").(string)
+					app.errorLogger.Error("Error", zap.Error(e.(error)), zap.String("request_id", reqId), zap.String("stack", err))
+				},
 			},
-		},
-	))
+		))
+	}
 	NewDoc(app)
 	fapp.Use(app.authControl)
 	for _, end := range app.GetEndPoints {
