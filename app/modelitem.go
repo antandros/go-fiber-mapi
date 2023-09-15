@@ -122,11 +122,8 @@ func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error
 func (mi *ModelItem[model]) UpdateOnUpdate(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
 }
-func (mi *ModelItem[model]) AddAggrageEndPoint(path string, aggrage []M, opts ...*EndPointOption) {
-	opt := EndPointOptions()
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
+func (mi *ModelItem[model]) AddAggrageEndPoint(path string, aggrage []M) *EndPoint {
+
 	var newAgg []M
 	if mi.SoftDelete {
 		newAgg = append(newAgg, M{
@@ -140,10 +137,11 @@ func (mi *ModelItem[model]) AddAggrageEndPoint(path string, aggrage []M, opts ..
 		function: func(c *fiber.Ctx) error {
 			return mi.GetAggregate(c, newAgg)
 		},
-		path:    path,
-		Options: opt,
+		IsAggregade: true,
+		path:        path,
 	}
 	mi.endpointsGet = append(mi.endpointsGet, e)
+	return e
 }
 func (mi *ModelItem[model]) SetResponseLimit(limit int64) {
 	mi.responseLimit = limit

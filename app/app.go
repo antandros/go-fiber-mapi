@@ -28,26 +28,16 @@ type EndPoint struct {
 	Aggregate     []M
 	IsPublic      bool
 	IsCustom      bool
+	IsPost        bool
+	IsAggregade   bool
 	Single        bool
 	List          bool
 	Name          string
+	Description   string
 	path          string
 	docpath       string
-	Options       *EndPointOption
 }
 type M map[string]interface{}
-
-type EndPointOption struct {
-	Title         string
-	Description   string
-	AuthRequired  bool
-	ResponseModel interface{}
-	RequestParams interface{}
-}
-
-func EndPointOptions() *EndPointOption {
-	return &EndPointOption{}
-}
 
 type ModelInterface interface {
 	GetEndPoints() []*EndPoint
@@ -141,7 +131,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 
 		}
 		var enpoints []*EndPoint
-
+		c.Append("X-REQUEST-ID", knowName)
 		switch route.Method {
 		case "GET":
 			enpoints = app.GetEndPoints
@@ -172,7 +162,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 	}
 	return c.Next()
 }
-func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) {
+func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) *EndPoint {
 	end := new(EndPoint)
 	end.path = path
 	end.function = fnc
@@ -181,16 +171,20 @@ func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interfac
 	end.requestbody = request
 	end.Name = uuid.NewString()
 	app.GetEndPoints = append(app.GetEndPoints, end)
+	return end
 }
-func (app *App) RegisterPostEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) {
+func (app *App) RegisterPostEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) *EndPoint {
 	end := new(EndPoint)
 	end.path = path
 	end.function = fnc
 	end.IsPublic = isPublic
+	end.IsPost = true
 	end.responseModel = response
 	end.Name = uuid.NewString()
+	end.docpath = path
 	end.requestbody = request
 	app.PostEndPoints = append(app.PostEndPoints, end)
+	return end
 }
 func (app *App) RegisterModel(item ModelInterface) {
 	item.SetDb(app.dbCon)
@@ -328,11 +322,11 @@ func (app *App) Run(host string) {
 	NewDoc(app)
 	fapp.Use(app.authControl)
 	for _, end := range app.GetEndPoints {
-		fapp.Get(end.path, end.function)
+		fapp.Get(end.path, end.function).Name(end.Name)
 	}
 
 	for _, end := range app.PostEndPoints {
-		fapp.Post(end.path, end.function)
+		fapp.Post(end.path, end.function).Name(end.Name)
 	}
 	for i := range app.models {
 		endppints := app.models[i].GetEndPoints()

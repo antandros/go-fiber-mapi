@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gosimple/slug"
 )
 
 type DocInfo struct {
@@ -73,12 +74,9 @@ type GenerateDoc struct {
 	data    M
 }
 
-func (gd *GenerateDoc) DocTags(mi ModelInterface) M {
+func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type) M {
 	mapData := M{}
-	item := mi.GetModelType()
-	pnm := item.(reflect.Type)
-	respItem := reflect.New(pnm).Elem().Addr().Interface()
-	mType := reflect.TypeOf(respItem).Elem()
+
 	lenField := mType.NumField()
 	for i := 0; i < lenField; i++ {
 		field := mType.Field(i)
@@ -118,6 +116,20 @@ func (gd *GenerateDoc) DocTags(mi ModelInterface) M {
 	}
 	return mapData
 }
+func (gd *GenerateDoc) DocTags(mi ModelInterface) M {
+	item := mi.GetModelType()
+	pnm := item.(reflect.Type)
+	respItem := reflect.New(pnm).Elem().Addr().Interface()
+	mType := reflect.TypeOf(respItem).Elem()
+
+	return gd.DocGenFieldData(mType)
+}
+func (gd *GenerateDoc) DocTagsCustom(m any) M {
+	mType := reflect.TypeOf(m)
+
+	return gd.DocGenFieldData(mType)
+}
+
 func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint, isPost bool, isPut bool, isDelete bool) {
 	if endpoint.docpath == "" {
 		return
@@ -218,9 +230,12 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 	}
 	resp := map[string]DocResponse{
 		"404": notFoundResponse,
-		"401": unauthorizedResponse,
 		"500": internalServerError,
 	}
+	if !endpoint.IsPublic {
+		resp["401"] = unauthorizedResponse
+	}
+
 	if isPost {
 		resp["201"] = returnSchema
 	} else {
@@ -301,6 +316,119 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 		gd.paths[endpoint.docpath] = endpointItem
 	}
 }
+func (gd *GenerateDoc) GenerateOtherEndpoints() {
+	allEndpoints := gd.app.GetEndPoints
+	allEndpoints = append(allEndpoints, gd.app.PostEndPoints...)
+	notFoundResponse := DocResponse{
+		Description: "item not found",
+		Content: M{"application/json": M{
+			"schema": M{
+				"$ref": "#/components/schemas/NotFound",
+			},
+		}},
+	}
+	internalServerError := DocResponse{
+		Description: "internal server error",
+		Content: M{"application/json": M{
+			"schema": M{
+				"$ref": "#/components/schemas/ServerError",
+			},
+		}},
+	}
+	unauthorizedResponse := DocResponse{
+		Description: "Unauthorized",
+		Content: M{"application/json": M{
+			"schema": M{
+				"$ref": "#/components/schemas/Unauthorized",
+			},
+		}},
+	}
+	for _, endpoint := range allEndpoints {
+		summary := fmt.Sprintf("Returns a single %s", endpoint.Name)
+		if endpoint.Description != "" {
+			summary = endpoint.Description
+		}
+		var parameters []*DocParameter
+		var tags []string
+		resp := map[string]DocResponse{
+			"404": notFoundResponse,
+			"500": internalServerError,
+		}
+		var sec []M
+
+		if !endpoint.IsPublic {
+			sec = []M{
+				M{"bearerAuth": []M{}},
+			}
+		}
+		if !endpoint.IsPublic {
+			resp["401"] = unauthorizedResponse
+		}
+		method := &DocMethodInfo{
+			Summary:    summary,
+			Parameters: parameters,
+			Responses:  resp,
+			Tags:       tags,
+			Security:   sec,
+		}
+		kk := slug.Make(endpoint.Name)
+		if endpoint.requestbody != nil {
+			if endpoint.IsPost {
+
+				key := fmt.Sprintf("Request%s", kk)
+
+				gd.schemas[key] = M{
+					"type":       "object",
+					"properties": gd.DocTagsCustom(endpoint.requestbody),
+				}
+				ref := fmt.Sprintf("#/components/schemas/%s", key)
+
+				method.RequestBody = &DocResponse{
+					Description: fmt.Sprintf("%s model", endpoint.Name),
+					Content: M{"application/json": M{
+						"schema": M{
+							"$ref": ref,
+						},
+					}},
+				}
+			}
+		}
+		if endpoint.responseModel != nil {
+			key := fmt.Sprintf("Response%s", kk)
+			gd.schemas[key] = M{
+				"type":       "object",
+				"properties": gd.DocTagsCustom(endpoint.responseModel),
+			}
+			ref := fmt.Sprintf("#/components/schemas/%s", key)
+			method.Responses["200"] = DocResponse{
+				Description: fmt.Sprintf("%s model", endpoint.Name),
+				Content: M{"application/json": M{
+					"schema": M{
+						"$ref": ref,
+					},
+				}},
+			}
+		}
+		var endpointItem DocEndPoint
+
+		if doc, ok := gd.paths[endpoint.docpath].(DocEndPoint); ok {
+			if endpoint.IsPost {
+				doc.Post = method
+			} else {
+				doc.Get = method
+			}
+			endpointItem = doc
+		} else {
+			endpointItem = DocEndPoint{}
+			if endpoint.IsPost {
+				endpointItem.Post = method
+			} else {
+				endpointItem.Get = method
+			}
+		}
+		gd.paths[endpoint.docpath] = endpointItem
+	}
+}
 func (gd *GenerateDoc) Generate() {
 	gd.schemas = M{}
 	gd.paths = M{}
@@ -320,7 +448,7 @@ func (gd *GenerateDoc) Generate() {
 		}
 
 	}
-
+	gd.GenerateOtherEndpoints()
 	gd.schemas["NotFound"] = M{
 		"type": "object",
 		"properties": M{

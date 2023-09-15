@@ -118,9 +118,11 @@ func main() {
 	})
 	dapp.RegisterModel(prices2)
 	dapp.RegisterModel(prices)
-	dapp.RegisterPostEndpoint("/login", true, Login{}, LoginResponse{}, func(c *fiber.Ctx) error {
+	endpoint := dapp.RegisterPostEndpoint("/login", true, Login{}, LoginResponse{}, func(c *fiber.Ctx) error {
 		return loginFunc(dapp, c)
 	})
+	endpoint.Name = "Login Endpoint"
+	endpoint.Description = "Login Endpoint"
 	dapp.SetAuthMiddleware(func(c *fiber.Ctx) (app.M, error) {
 		var tokenString string
 		tokenData := c.Get("authorization", "")
