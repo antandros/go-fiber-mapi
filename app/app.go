@@ -125,6 +125,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 			for _, endpoint := range enpoints {
 				if strings.EqualFold(endpoint.path, elmPath) || endpoint.Name == knowName {
 					founded = endpoint
+					c.Locals("model", app.models[i])
 					break
 				}
 			}
@@ -148,7 +149,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 		if founded.IsPublic {
 			return c.Next()
 		}
-		c.Locals("model", founded)
+		c.Locals("endpoint", founded)
 		extraQuery, err := app.authMiddleware(c)
 		if err != nil {
 			return c.Status(401).JSON(Response{
