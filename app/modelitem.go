@@ -122,7 +122,7 @@ func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error
 func (mi *ModelItem[model]) UpdateOnUpdate(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
 }
-func (mi *ModelItem[model]) AddAggrageEndPoint(path string, aggrage []M) *EndPoint {
+func (mi *ModelItem[model]) AddAggrageEndPoint(path string, responseModel interface{}, requestModel interface{}, aggrage []M) *EndPoint {
 
 	var newAgg []M
 	if mi.SoftDelete {
@@ -137,8 +137,13 @@ func (mi *ModelItem[model]) AddAggrageEndPoint(path string, aggrage []M) *EndPoi
 		function: func(c *fiber.Ctx) error {
 			return mi.GetAggregate(c, newAgg)
 		},
-		IsAggregade: true,
-		path:        path,
+		IsAggregade:   true,
+		Name:          mi.name,
+		docpath:       path,
+		requestbody:   requestModel,
+		responseModel: responseModel,
+		Single:        true,
+		path:          path,
 	}
 	mi.endpointsGet = append(mi.endpointsGet, e)
 	return e

@@ -147,6 +147,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 		} else {
 			summary = fmt.Sprintf("Returns a single %s", model.GetName())
 		}
+
 		if !isPost {
 			parameters = append(parameters, &DocParameter{
 				Name:     "id",
@@ -171,6 +172,21 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 	}
 	if endpoint.List {
 		summary = fmt.Sprintf("Returns a all %s", model.GetName())
+		data := gd.DocTagsCustom(DefaultQuery{})
+		for key, val := range data {
+			parameters = append(parameters, &DocParameter{
+				Name:     key,
+				In:       "query",
+				Required: false,
+				Schema: struct {
+					Type    string "json:\"type,omitempty\""
+					Maximum int    "json:\"maximum,omitempty\""
+					Format  string "json:\"format,omitempty\""
+				}{
+					Type: val.(M)["type"].(string),
+				},
+			})
+		}
 		responseBase = M{
 			"type": "array",
 			"items": M{
@@ -182,6 +198,48 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 		gd.schemas[model.GetName()] = M{
 			"type":       "object",
 			"properties": gd.DocTags(model),
+		}
+	}
+	if endpoint.IsAggregade {
+		if endpoint.Description != "" {
+			summary = endpoint.Description
+		} else {
+			summary = fmt.Sprintf("%s Aggregate", model.GetName())
+		}
+		parameters = parameters[:0]
+		if endpoint.requestbody != nil {
+			data := gd.DocTagsCustom(endpoint.requestbody)
+			for key, val := range data {
+				parameters = append(parameters, &DocParameter{
+					Name:     key,
+					In:       "query",
+					Required: false,
+					Schema: struct {
+						Type    string "json:\"type,omitempty\""
+						Maximum int    "json:\"maximum,omitempty\""
+						Format  string "json:\"format,omitempty\""
+					}{
+						Type: val.(M)["type"].(string),
+					},
+				})
+			}
+		}
+		if endpoint.responseModel != nil {
+			kk := slug.Make(endpoint.Name)
+			if _, ok := gd.schemas[kk]; ok {
+				kk = fmt.Sprintf("%s%s", kk, GenerateString(6))
+			}
+			ref := fmt.Sprintf("#/components/schemas/%s", kk)
+			gd.schemas[kk] = M{
+				"type":       "object",
+				"properties": gd.DocTagsCustom(endpoint.responseModel),
+			}
+			responseBase = M{
+				"type": "array",
+				"items": M{
+					"$ref": ref,
+				},
+			}
 		}
 	}
 	returnSchema := DocResponse{

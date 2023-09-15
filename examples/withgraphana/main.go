@@ -95,8 +95,6 @@ func main() {
 	dapp.BaseURL = "http://127.0.0.1:8766/"
 	prices := app.NewModel[PriceTimes]("price_times")
 	prices.SoftDelete = true
-	prices.AddAggrageEndPoint("test2", []app.M{})
-	prices.AddAggrageEndPoint("test444/*/asdasd/:Q/", []app.M{})
 	prices.UpdateOnAdd(func(item app.M, c *fiber.Ctx) (app.M, error) {
 		cid := c.Locals("cid")
 		if cid != nil {
@@ -111,7 +109,7 @@ func main() {
 	})*/
 	prices2 := app.NewModel[PriceTimesXN]("price_times2")
 	prices2.SoftDelete = true
-	prices2.AddAggrageEndPoint("test3", []app.M{
+	prices2.AddAggrageEndPoint("test3", LoginResponse{}, Login{}, []app.M{
 		app.M{"$match": app.M{
 			"company_id": "123",
 		}},
