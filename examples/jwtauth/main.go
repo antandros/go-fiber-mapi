@@ -92,8 +92,8 @@ func main() {
 	dapp := gofibermapi.NewApp("mongodb://root:example@10.4.0.102:27017/", "test_fiber_api", "./")
 	prices := app.NewModel[PriceTimes]("price_times")
 	prices.SoftDelete = true
-	prices.AddAggrageEndPoint("test2", LoginResponse{}, Login{}, []app.M{})
-	prices.AddAggrageEndPoint("test444/*/asdasd/:Q/", LoginResponse{}, Login{}, []app.M{})
+	prices.AddAggrageEndPoint("test2", "get", LoginResponse{}, Login{}, []app.M{})
+	prices.AddAggrageEndPoint("test444/*/asdasd/:Q/", "get", LoginResponse{}, Login{}, []app.M{})
 	prices.UpdateOnAdd(func(item app.M, c *fiber.Ctx) (app.M, error) {
 		cid := c.Locals("cid")
 		if cid != nil {
@@ -108,7 +108,7 @@ func main() {
 	})*/
 	prices2 := app.NewModel[PriceTimesXN]("price_times2")
 	prices2.SoftDelete = true
-	prices2.AddAggrageEndPoint("test3", LoginResponse{}, Login{}, []app.M{
+	prices2.AddAggrageEndPoint("test3", "get", LoginResponse{}, Login{}, []app.M{
 		app.M{"$match": app.M{
 			"company_id": "123",
 		}},

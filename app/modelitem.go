@@ -1,9 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"reflect"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -100,20 +103,65 @@ func (mi *ModelItem[model]) SetInfo(title string, desc string, tags []string) {
 	mi.Description = desc
 	mi.DescTags = tags
 }
-func (mi *ModelItem[model]) GetAggregate(c *fiber.Ctx, aggrage []M) error {
-	data := M{"hello": true}
+func (mi *ModelItem[model]) GetAggregate(c *fiber.Ctx, aggrage []M, requestItem interface{}, responseItem interface{}, method string) error {
+
 	localGet := c.Locals("authQuery")
 	var extraQuery M
 	if localGet != nil {
 		extraQuery = localGet.(M)
 	}
 	var aggrageBase []M
-	if extraQuery != nil {
-		aggrageBase = append(aggrageBase, M{"$match": extraQuery})
-	}
+
 	aggrageBase = append(aggrageBase, aggrage...)
-	data["agg"] = aggrageBase
-	return c.JSON(data)
+	//data["agg"] = aggrageBase
+
+	resp, err := json.Marshal(aggrageBase)
+	if err != nil {
+		panic(err)
+	}
+	templateItem := template.New("base")
+	tmpl, err := templateItem.Parse(string(resp))
+	if err != nil {
+		panic(err)
+	}
+	reqItemType := reflect.TypeOf(requestItem)
+	reqItem := reflect.New(reqItemType).Elem().Addr().Interface()
+	if strings.EqualFold(method, "get") {
+		err = c.QueryParser(reqItem)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		err = c.BodyParser(reqItem)
+		if err != nil {
+			panic(err)
+		}
+	}
+	var tempOut bytes.Buffer
+	err = tmpl.Execute(&tempOut, reqItem)
+	if err != nil {
+		panic(err)
+	}
+	err = json.Unmarshal(tempOut.Bytes(), &aggrageBase)
+	if err != nil {
+		panic(err)
+	}
+	if extraQuery != nil {
+		aggrageBase = append([]M{M{"$match": extraQuery}}, aggrageBase...)
+	}
+	cursor, err := mi.colDb.Aggregate(c.Context(), aggrageBase)
+	if err != nil {
+		panic(err)
+	}
+	respItemType := reflect.TypeOf(responseItem)
+	totalLength := cursor.RemainingBatchLength()
+	sliceElem := reflect.SliceOf(respItemType)
+	respItems := reflect.MakeSlice(sliceElem, totalLength, totalLength).Interface()
+	err = cursor.All(c.Context(), &respItems)
+	if err != nil {
+		panic(err)
+	}
+	return mi.R200(c, "", respItems)
 }
 
 func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error)) {
@@ -122,7 +170,7 @@ func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error
 func (mi *ModelItem[model]) UpdateOnUpdate(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
 }
-func (mi *ModelItem[model]) AddAggrageEndPoint(path string, responseModel interface{}, requestModel interface{}, aggrage []M) *EndPoint {
+func (mi *ModelItem[model]) AddAggrageEndPoint(path string, method string, responseModel interface{}, requestModel interface{}, aggrage []M) *EndPoint {
 
 	var newAgg []M
 	if mi.SoftDelete {
@@ -133,19 +181,25 @@ func (mi *ModelItem[model]) AddAggrageEndPoint(path string, responseModel interf
 		})
 	}
 	newAgg = append(newAgg, aggrage...)
+
 	e := &EndPoint{
 		function: func(c *fiber.Ctx) error {
-			return mi.GetAggregate(c, newAgg)
+			return mi.GetAggregate(c, newAgg, requestModel, responseModel, method)
 		},
 		IsAggregade:   true,
 		Name:          mi.name,
-		docpath:       path,
+		docpath:       "/api/" + path,
 		requestbody:   requestModel,
 		responseModel: responseModel,
 		Single:        true,
 		path:          path,
 	}
-	mi.endpointsGet = append(mi.endpointsGet, e)
+	if strings.EqualFold(method, "get") {
+
+		mi.endpointsGet = append(mi.endpointsGet, e)
+	} else {
+		mi.endpointsPost = append(mi.endpointsPost, e)
+	}
 	return e
 }
 func (mi *ModelItem[model]) SetResponseLimit(limit int64) {

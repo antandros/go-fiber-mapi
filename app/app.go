@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
@@ -70,6 +71,8 @@ type App struct {
 	Name           string
 	Description    string
 	BaseURL        string
+	SaveLog        bool
+	LogLife        time.Duration
 	Debug          bool
 }
 
@@ -132,7 +135,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 
 		}
 		var enpoints []*EndPoint
-		c.Append("X-REQUEST-ID", knowName)
+		c.Append("X-REQUEST-MTH", knowName)
 		switch route.Method {
 		case "GET":
 			enpoints = app.GetEndPoints
@@ -145,21 +148,25 @@ func (app *App) authControl(c *fiber.Ctx) error {
 				break
 			}
 		}
+		c.Locals("endpoint", founded)
+		if founded != nil {
+			c.Append("X-REQUEST-FND", founded.Name)
+			if founded.IsPublic {
+				return c.Next()
+			}
 
-		if founded.IsPublic {
+			extraQuery, err := app.authMiddleware(c)
+			if err != nil {
+				return c.Status(401).JSON(Response{
+					Message:    "Unauthorized",
+					StatusCode: 401,
+					Error:      err.Error(),
+				})
+			}
+			c.Locals("authQuery", extraQuery)
 			return c.Next()
 		}
-		c.Locals("endpoint", founded)
-		extraQuery, err := app.authMiddleware(c)
-		if err != nil {
-			return c.Status(401).JSON(Response{
-				Message:    "Unauthorized",
-				StatusCode: 401,
-				Error:      err.Error(),
-			})
-		}
-		c.Locals("authQuery", extraQuery)
-		return c.Next()
+
 	}
 	return c.Next()
 }
@@ -261,7 +268,45 @@ func (app *App) FindOneCollection(collection string, query M) *mongo.SingleResul
 func (app *App) AggrageteCollection(collection string, query []M) (*mongo.Cursor, error) {
 	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query)
 }
+func (app *App) LogDbInit() {
+	collections, err := app.dbCon.ListCollectionNames(context.Background(), M{})
+	if err != nil {
+		panic(err)
+	}
+	created := false
+	for _, item := range collections {
+		if item == "fimapi_api_log" {
+			created = true
+		}
+	}
+	if !created {
+
+		err := app.dbCon.CreateCollection(context.Background(), "fimapi_api_log")
+
+		if err != nil {
+			panic(err)
+		}
+		col := app.dbCon.Collection("fimapi_api_log")
+		var indexes []mongo.IndexModel
+		duration := int32(app.LogLife.Seconds())
+		indexAfterClear := mongo.IndexModel{
+			Keys: M{"date": 1},
+			Options: &options.IndexOptions{
+				ExpireAfterSeconds: &duration,
+			},
+		}
+		indexes = append(indexes, indexAfterClear)
+		resp, err := col.Indexes().CreateOne(context.Background(), indexAfterClear)
+		fmt.Println("Index Create", resp, err)
+	}
+}
 func (app *App) Run(host string) {
+	if app.SaveLog {
+		if app.LogLife.Milliseconds() == 0 {
+			app.LogLife = time.Hour * 24 * 10
+			app.LogDbInit()
+		}
+	}
 	fConfig := fiber.Config{
 		ReadTimeout:  time.Second * 10,
 		WriteTimeout: time.Second * 10,
@@ -289,6 +334,44 @@ func (app *App) Run(host string) {
 		}
 	}
 	fapp := fiber.New(fConfig)
+	if app.SaveLog {
+		fapp.Use(func(c *fiber.Ctx) error {
+			t := time.Now()
+
+			respData := c.Next()
+			duration := time.Since(t).Microseconds()
+			locals := M{}
+			c.Context().VisitUserValuesAll(func(i1, i2 interface{}) {
+
+				if lData, ok := i2.(string); ok {
+					if lKey, ok := i1.(string); ok {
+						locals[lKey] = lData
+					}
+				}
+			})
+			logItem := ApiLog{
+				Locals:          locals,
+				Uri:             c.BaseURL(),
+				Date:            primitive.NewDateTimeFromTime(t),
+				Duration:        duration,
+				OriginalUri:     c.OriginalURL(),
+				ResponseCode:    c.Response().StatusCode(),
+				Method:          c.Method(),
+				RequestIp:       c.IP(),
+				RequestIpS:      c.IPs(),
+				RawRequest:      c.Request().String(),
+				RawResponse:     c.Request().String(),
+				RequestHeaders:  c.GetReqHeaders(),
+				ResponseHeaders: c.GetRespHeaders(),
+			}
+			go func(bapp *App, item ApiLog) {
+
+				bapp.dbCon.Collection("fimapi_api_log").InsertOne(context.Background(), item)
+
+			}(app, logItem)
+			return respData
+		})
+	}
 	fapp.Use(fiberzap.New(fiberzap.Config{
 		Logger: app.GetZap(),
 		FieldsFunc: func(c *fiber.Ctx) []zap.Field {

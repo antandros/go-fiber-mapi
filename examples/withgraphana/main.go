@@ -30,6 +30,15 @@ type PriceTimesXN struct {
 	Time    time.Time
 }
 
+type RequestParamsItem struct {
+	Ticker string `json:"ticker,omitempty"`
+	Source string `json:"source,omitempty"`
+}
+type ResponseAggr struct {
+	Id  string `bson:"_id" json:"ticker"`
+	Avg uint64 `bson:"avg" json:"avg,omitempty"`
+}
+
 type Company struct {
 	Name string
 }
@@ -92,6 +101,8 @@ func main() {
 	dapp := gofibermapi.NewApp("mongodb://root:example@10.4.0.102:27017/", "test_fiber_api", "./log/")
 	dapp.Description = "Deneme felan"
 	dapp.Name = "Test api"
+	dapp.SaveLog = true
+	dapp.Debug = true
 	dapp.BaseURL = "http://127.0.0.1:8766/"
 	prices := app.NewModel[PriceTimes]("price_times")
 	prices.SoftDelete = true
@@ -109,10 +120,26 @@ func main() {
 	})*/
 	prices2 := app.NewModel[PriceTimesXN]("price_times2")
 	prices2.SoftDelete = true
-	prices2.AddAggrageEndPoint("test3", LoginResponse{}, Login{}, []app.M{
+	query := app.M{
+		"$group":
+		/**
+		 * _id: The id of the group.
+		 * fieldN: The first field name.
+		 */
+		app.M{
+			"_id": "$ticker",
+			"avg": app.M{
+				"$avg": "$price",
+			},
+		},
+	}
+
+	prices.AddAggrageEndPoint("test3", "get", ResponseAggr{}, RequestParamsItem{}, []app.M{
+
 		app.M{"$match": app.M{
-			"company_id": "123",
+			"ticker": "{{ .Ticker }}",
 		}},
+		query,
 	})
 	dapp.RegisterModel(prices2)
 	dapp.RegisterModel(prices)
@@ -154,6 +181,7 @@ func main() {
 			uid, _ := token.Claims.GetIssuer()
 			cid, _ := primitive.ObjectIDFromHex(subj)
 			c.Locals("uid", uid)
+			c.Locals("sub", subj)
 			c.Locals("cid", cid)
 			return app.M{"company_id": cid}, nil
 		}
