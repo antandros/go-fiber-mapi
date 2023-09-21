@@ -266,8 +266,8 @@ func (app *App) FindCollection(collection string, query M) (*mongo.Cursor, error
 func (app *App) FindOneCollection(collection string, query M) *mongo.SingleResult {
 	return app.dbCon.Collection(collection).FindOne(app.currentCtx.Context(), query)
 }
-func (app *App) AggrageteCollection(collection string, query []M) (*mongo.Cursor, error) {
-	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query)
+func (app *App) AggrageteCollection(collection string, query []M, options ...*options.AggregateOptions) (*mongo.Cursor, error) {
+	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query, options...)
 }
 func (app *App) LogDbInit() {
 	collections, err := app.dbCon.ListCollectionNames(context.Background(), M{})
