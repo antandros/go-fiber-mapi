@@ -212,7 +212,6 @@ func New(con string, db string, logPath string) *App {
 		logPath: logPath,
 	}
 	app.errorLogger = app.GetErrorZap()
-	app.CreateConnection()
 	return app
 }
 
@@ -309,6 +308,8 @@ func (app *App) LogDbInit() {
 	}
 }
 func (app *App) Run(host string) {
+	app.CreateConnection()
+
 	if app.SaveLog {
 		if app.LogLife.Milliseconds() == 0 {
 			app.LogLife = time.Hour * 24 * 10
