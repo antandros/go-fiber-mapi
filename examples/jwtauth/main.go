@@ -88,6 +88,17 @@ func loginFunc(dapp *app.App, c *fiber.Ctx) error {
 		})
 	}
 }
+
+type PriceQuery struct {
+	StartDate string `json:"start_date,omitempty"`
+	EndtDate  string `json:"endt_date,omitempty"`
+	Ticker    string `json:"ticker,omitempty"`
+	Fiat      string `json:"fiat,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+	Aggregate string `json:"aggregate,omitempty"`
+}
+
 func main() {
 	dapp := gofibermapi.NewApp("mongodb://root:example@10.4.0.102:27017/", "test_fiber_api", "./")
 	prices := app.NewModel[PriceTimes]("price_times")
@@ -106,6 +117,7 @@ func main() {
 	/*prices.UpdateOnUpdate(func(item app.M, c *fiber.Ctx) (app.M, error) {
 		return nil, nil
 	})*/
+	dapp.BaseURL = "http://localhost:8766"
 	prices2 := app.NewModel[PriceTimesXN]("price_times2")
 	prices2.SoftDelete = true
 	prices2.AddAggrageEndPoint("test3", "get", LoginResponse{}, Login{}, []app.M{
@@ -115,7 +127,7 @@ func main() {
 	})
 	dapp.RegisterModel(prices2)
 	dapp.RegisterModel(prices)
-	dapp.RegisterPostEndpoint("/login", true, Login{}, LoginResponse{}, func(c *fiber.Ctx) error {
+	dapp.RegisterGetEndpoint("/login", true, PriceQuery{}, LoginResponse{}, func(c *fiber.Ctx) error {
 		return loginFunc(dapp, c)
 	})
 	dapp.SetAuthMiddleware(func(c *fiber.Ctx) (app.M, error) {

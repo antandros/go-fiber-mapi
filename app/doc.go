@@ -422,6 +422,29 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 		if !endpoint.IsPublic {
 			resp["401"] = unauthorizedResponse
 		}
+		kk := slug.Make(endpoint.Name)
+		if len(endpoint.Name) == 36 {
+			kk = slug.Make(endpoint.path)
+		}
+		if endpoint.responseModel != nil {
+
+			key := fmt.Sprintf("Response%s", kk)
+			gd.schemas[key] = M{
+				"type":       "object",
+				"properties": gd.DocTagsCustom(endpoint.responseModel),
+			}
+			ref := fmt.Sprintf("#/components/schemas/%s", key)
+			fmt.Println(ref, kk, endpoint.docpath, endpoint.path)
+
+			resp["200"] = DocResponse{
+				Description: fmt.Sprintf("%s model", endpoint.Name),
+				Content: M{"application/json": M{
+					"schema": M{
+						"$ref": ref,
+					},
+				}},
+			}
+		}
 		method := &DocMethodInfo{
 			Summary:    summary,
 			Parameters: parameters,
@@ -429,7 +452,7 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 			Tags:       tags,
 			Security:   sec,
 		}
-		kk := slug.Make(endpoint.Name)
+
 		if endpoint.requestbody != nil {
 			if endpoint.IsPost {
 
@@ -449,24 +472,26 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 						},
 					}},
 				}
+			} else {
+				data := gd.DocTagsCustom(endpoint.requestbody)
+				for key, val := range data {
+					parameters = append(parameters, &DocParameter{
+						Name:     key,
+						In:       "query",
+						Required: false,
+						Schema: struct {
+							Type    string "json:\"type,omitempty\""
+							Maximum int    "json:\"maximum,omitempty\""
+							Format  string "json:\"format,omitempty\""
+						}{
+							Type: val.(M)["type"].(string),
+						},
+					})
+				}
+				method.Parameters = parameters
 			}
 		}
-		if endpoint.responseModel != nil {
-			key := fmt.Sprintf("Response%s", kk)
-			gd.schemas[key] = M{
-				"type":       "object",
-				"properties": gd.DocTagsCustom(endpoint.responseModel),
-			}
-			ref := fmt.Sprintf("#/components/schemas/%s", key)
-			method.Responses["200"] = DocResponse{
-				Description: fmt.Sprintf("%s model", endpoint.Name),
-				Content: M{"application/json": M{
-					"schema": M{
-						"$ref": ref,
-					},
-				}},
-			}
-		}
+
 		var endpointItem DocEndPoint
 
 		if doc, ok := gd.paths[endpoint.docpath].(DocEndPoint); ok {

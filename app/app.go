@@ -177,6 +177,7 @@ func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interfac
 	end.responseModel = response
 	end.IsPublic = isPublic
 	end.requestbody = request
+	end.docpath = path
 	end.Name = uuid.NewString()
 	app.GetEndPoints = append(app.GetEndPoints, end)
 	return end
