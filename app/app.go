@@ -200,7 +200,7 @@ func (app *App) RegisterPostEndpoint(path string, isPublic bool, request interfa
 	return end
 }
 func (app *App) RegisterModel(item ModelInterface) {
-	item.SetDb(app.dbCon)
+
 	item.Generate()
 	app.models = append(app.models, item)
 }
@@ -307,9 +307,14 @@ func (app *App) LogDbInit() {
 		fmt.Println("Index Create", resp, err)
 	}
 }
+func (app *App) SetDb() {
+	for i := range app.models {
+		app.models[i].SetDb(app.dbCon)
+	}
+}
 func (app *App) Run(host string) {
 	app.CreateConnection()
-
+	app.SetDb()
 	if app.SaveLog {
 		if app.LogLife.Milliseconds() == 0 {
 			app.LogLife = time.Hour * 24 * 10
