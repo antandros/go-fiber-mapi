@@ -262,6 +262,9 @@ func (app *App) GetErrorZap() *zap.Logger {
 func (app *App) FindCollection(collection string, query M) (*mongo.Cursor, error) {
 	return app.dbCon.Collection(collection).Find(app.currentCtx.Context(), query)
 }
+func (app *App) GetCollection(collection string) *mongo.Collection {
+	return app.dbCon.Collection(collection)
+}
 
 func (app *App) FindOneCollection(collection string, query M) *mongo.SingleResult {
 	return app.dbCon.Collection(collection).FindOne(app.currentCtx.Context(), query)
