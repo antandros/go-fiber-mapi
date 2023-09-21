@@ -219,7 +219,10 @@ func (mi *ModelItem[model]) DeleteEndPoints() []*EndPoint {
 	return mi.endpointsDelete
 }
 func (mi *ModelItem[model]) SetDb(db *mongo.Database) {
+
 	mi.dbCon = db
+	path := strcase.SnakeCase(mi.name)
+	mi.colDb = mi.dbCon.Collection(path)
 }
 func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 	oid := c.Params("id", "")
@@ -469,7 +472,6 @@ func (mi *ModelItem[model]) GetName() string {
 func (mi *ModelItem[model]) Generate() {
 	mi.name = reflect.TypeOf(mi.modelIt).Elem().Name()
 	path := strcase.SnakeCase(mi.name)
-	mi.colDb = mi.dbCon.Collection(path)
 	if !mi.NoDelete {
 		mi.endpointsDelete = append(mi.endpointsDelete, &EndPoint{
 			function:      mi.DeleteItem,
