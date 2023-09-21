@@ -56,28 +56,32 @@ type DefaultQuery struct {
 }
 
 type App struct {
-	models         []ModelInterface
-	dbCon          *mongo.Database
-	mongoClient    *mongo.Client
-	authMiddleware func(*fiber.Ctx) (M, error)
-	GetEndPoints   []*EndPoint
-	PostEndPoints  []*EndPoint
-	conurl         string
-	logPath        string
-	dbName         string
-	fiberApp       *fiber.App
-	currentCtx     *fiber.Ctx
-	errorLogger    *zap.Logger
-	Name           string
-	Description    string
-	BaseURL        string
-	SaveLog        bool
-	LogLife        time.Duration
-	Debug          bool
+	models             []ModelInterface
+	dbCon              *mongo.Database
+	mongoClient        *mongo.Client
+	authMiddleware     func(*fiber.Ctx) (M, error)
+	GetEndPoints       []*EndPoint
+	PostEndPoints      []*EndPoint
+	conurl             string
+	logPath            string
+	dbName             string
+	fiberApp           *fiber.App
+	currentCtx         *fiber.Ctx
+	errorLogger        *zap.Logger
+	MongoClientOptions *options.ClientOptions
+	Name               string
+	Description        string
+	BaseURL            string
+	SaveLog            bool
+	LogLife            time.Duration
+	Debug              bool
 }
 
 func (app *App) CreateConnection() {
 	opt := options.Client()
+	if app.MongoClientOptions != nil {
+		opt = app.MongoClientOptions
+	}
 	opt = opt.ApplyURI(app.conurl)
 	client, err := mongo.Connect(context.Background(), opt)
 	if err != nil {
