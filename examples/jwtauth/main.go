@@ -85,13 +85,16 @@ func loginFunc(dapp *app.App, c *fiber.Ctx) error {
 }
 
 type PriceQuery struct {
-	StartDate string `json:"start_date,omitempty"`
-	EndtDate  string `json:"endt_date,omitempty"`
-	Ticker    string `json:"ticker,omitempty"`
-	Fiat      string `json:"fiat,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
-	Aggregate string `json:"aggregate,omitempty"`
+	StartDate string               `json:"start_date,omitempty" field:"test"`
+	EndDate   string               `json:"end_date,omitempty"  field:"test"`
+	Ticker    string               `json:"ticker,omitempty"  field:"test"`
+	Fiat      string               `json:"fiat,omitempty"  field:"test"`
+	Limit     int                  `json:"limit,omitempty"  field:"test"`
+	Offset    int                  `json:"offset,omitempty"  field:"test"`
+	Aggregate string               `json:"aggregate,omitempty"  field:"test"`
+	PID       primitive.ObjectID   `json:"pid,omitempty"  field:"test"`
+	PD        primitive.DateTime   `json:"pd,omitempty"  field:"test"`
+	PDec      primitive.Decimal128 `json:"pdec,omitempty"  field:"test"`
 }
 
 func main() {

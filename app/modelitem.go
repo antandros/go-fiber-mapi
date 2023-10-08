@@ -258,6 +258,29 @@ func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 	return mi.R400(c, "required item path", nil)
 }
 
+func (mi *ModelItem[model]) GenerateQueryParams(data map[string]string, mapData M) M {
+
+	mType := reflect.TypeOf(mi.QueryParams)
+	vType := reflect.ValueOf(mi.QueryParams)
+
+	lenField := mType.NumField()
+	for i := 0; i < lenField; i++ {
+		field := mType.Field(i)
+		vfield := vType.Field(i)
+		fld := field.Tag
+		ftag := fld.Get("field")
+		jtag := fld.Get("json")
+
+		if ftag != "-" && ftag != "" && jtag != "" {
+			jName := strings.Split(jtag, ",")[0]
+			if fieldData, ok := data[jName]; ok {
+				mapData[ftag] = ConvertType(fieldData, vfield)
+			}
+		}
+	}
+	return mapData
+}
+
 func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 
 	query := M{}
@@ -273,18 +296,20 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	if mi.responseLimit > 0 {
 		limit = mi.responseLimit
 	}
-	var params DefaultQuery
-	c.ParamsParser(&params)
-	if !mi.LimitNoChange && params.Limit != 0 {
-		limit = params.Limit
+
+	if mi.QueryParams != nil {
+
+		mi.GenerateQueryParams(c.Queries(), query)
+	}
+	if !mi.LimitNoChange && c.QueryInt("limit", 0) != 0 {
+		limit = int64(c.QueryInt("limit", 0))
 	}
 	offset := int64(0)
-	if params.Offset != 0 {
-		offset = params.Offset
+	if c.QueryInt("offset", 0) > 0 {
+		offset = int64(c.QueryInt("offset", 0))
 	}
 	opt.SetSkip(offset)
 	opt.SetLimit(limit)
-
 	cursor, err := mi.colDb.Find(c.Context(), query)
 	if err != nil {
 		return mi.R500(c, "server error", err)
@@ -489,6 +514,7 @@ func (mi *ModelItem[model]) Generate() {
 			Name:          uuid.NewString(),
 			Single:        true,
 			responseModel: Response{},
+			QueryParams:   mi.QueryParams,
 			path:          fmt.Sprintf("%s/:id", path),
 			docpath:       fmt.Sprintf("/api/%s/{id}", path),
 		})
@@ -508,6 +534,7 @@ func (mi *ModelItem[model]) Generate() {
 			function:      mi.GetItems,
 			Name:          uuid.NewString(),
 			List:          true,
+			QueryParams:   mi.QueryParams,
 			responseModel: Response{},
 			path:          fmt.Sprintf("%s/", path),
 			docpath:       fmt.Sprintf("/api/%s/", path),

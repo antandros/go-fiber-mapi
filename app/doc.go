@@ -241,7 +241,13 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 	}
 	if endpoint.List {
 		summary = fmt.Sprintf("Returns a all %s", model.GetName())
-		data := gd.DocTagsCustom(DefaultQuery{})
+		var data M
+		if endpoint.QueryParams != nil {
+			data = gd.DocTagsCustom(endpoint.QueryParams)
+		} else {
+
+			data = gd.DocTagsCustom(DefaultQuery{})
+		}
 		for key, val := range data {
 			parameters = append(parameters, &DocParameter{
 				Name:     key,

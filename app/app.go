@@ -26,6 +26,7 @@ type EndPoint struct {
 	function      func(*fiber.Ctx) error
 	requestbody   interface{}
 	responseModel interface{}
+	QueryParams   interface{}
 	Aggregate     []M
 	IsPublic      bool
 	IsCustom      bool
