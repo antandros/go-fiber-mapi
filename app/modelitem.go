@@ -42,6 +42,7 @@ type ModelItem[model any] struct {
 	Title                  string
 	Description            string
 	DescTags               []string
+	QueryParams            interface{}
 	modelType              reflect.Type
 	UpdateOnAddFunction    func(item M, c *fiber.Ctx) (M, error)
 	UpdateOnUpdateFunction func(item M, c *fiber.Ctx) (M, error)

@@ -86,6 +86,7 @@ func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type) M {
 			nname := strings.Split(jtag, ",")[0]
 			typeText := ""
 			typeFormat := ""
+			typeRef := ""
 			if len(field.Type.Name()) > 2 {
 				switch strings.ToLower(field.Type.Name()[:3]) {
 				case "int":
@@ -102,13 +103,81 @@ func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type) M {
 					typeFormat = field.Type.Name()
 				default:
 					typeText = "string"
-					typeFormat = field.Type.Name()
+
+					if field.Type.Kind() == reflect.Struct {
+
+						key := fmt.Sprintf("%sModel", field.Type.Name())
+						pnm := field.Type
+
+						if _, ok := gd.schemas[key]; !ok {
+							docData := gd.DocGenFieldData(pnm)
+							gd.schemas[key] = M{
+								"type":       "object",
+								"properties": docData,
+							}
+						}
+
+						typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+						typeFormat = key
+						typeText = "object"
+					} else if field.Type.Kind() == reflect.String {
+						typeText = "string"
+
+					} else if field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Array {
+						if field.Type.Elem().Kind() == reflect.Struct {
+							key := fmt.Sprintf("%sModel", field.Type.Name())
+							pnm := field.Type
+
+							if _, ok := gd.schemas[key]; !ok {
+								docData := gd.DocGenFieldData(pnm)
+								gd.schemas[key] = M{
+									"type":       "object",
+									"properties": docData,
+								}
+							}
+
+							typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+							typeText = "array"
+						}
+					} else {
+
+						typeFormat = field.Type.Name()
+
+					}
+
 				}
 
+			} else if field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Array {
+				if field.Type.Elem().Kind() == reflect.Struct {
+					pnm := field.Type.Elem()
+					key := fmt.Sprintf("%sModel", pnm.Name())
+
+					if _, ok := gd.schemas[key]; !ok {
+						docData := gd.DocGenFieldData(pnm)
+						gd.schemas[key] = M{
+							"type":       "object",
+							"properties": docData,
+						}
+					}
+
+					typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+					typeText = "array"
+				}
 			}
+
 			mapData[nname] = M{
 				"type":   typeText,
 				"format": typeFormat,
+			}
+			if typeText == "array" {
+				mapData[nname].(M)["items"] = M{
+					"$ref": typeRef,
+				}
+				mapData[nname].(M)["format"] = "array"
+			} else {
+				if typeRef != "" {
+					mapData[nname].(M)["$ref"] = typeRef
+				}
 			}
 
 		}
@@ -434,7 +503,6 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 				"properties": gd.DocTagsCustom(endpoint.responseModel),
 			}
 			ref := fmt.Sprintf("#/components/schemas/%s", key)
-			fmt.Println(ref, kk, endpoint.docpath, endpoint.path)
 
 			resp["200"] = DocResponse{
 				Description: fmt.Sprintf("%s model", endpoint.Name),
