@@ -60,6 +60,7 @@ type DefaultQuery struct {
 type App struct {
 	models             []ModelInterface
 	dbCon              *mongo.Database
+	cors               *cors.Config
 	mongoClient        *mongo.Client
 	authMiddleware     func(*fiber.Ctx) (M, error)
 	GetEndPoints       []*EndPoint
@@ -278,14 +279,10 @@ func (app *App) AggrageteCollection(collection string, query []M, options ...*op
 	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query, options...)
 }
 func (app *App) SetCors(origins []string, headers []string) {
-	config := cors.Config{}
-	if len(origins) > 0 {
-		config.AllowOrigins = strings.Join(origins, ",")
-	}
-	if len(headers) > 0 {
-		config.AllowHeaders = strings.Join(headers, ",")
-	}
-	app.fiberApp.Use(cors.New(config))
+
+	app.cors = &cors.Config{}
+	app.cors.AllowHeaders = strings.Join(headers, ",")
+	app.cors.AllowOrigins = strings.Join(origins, ",")
 }
 func (app *App) LogDbInit() {
 	collections, err := app.dbCon.ListCollectionNames(context.Background(), M{})
@@ -360,6 +357,9 @@ func (app *App) Run(host string) {
 		}
 	}
 	fapp := fiber.New(fConfig)
+	if app.cors != nil {
+		fapp.Use(cors.New(*app.cors))
+	}
 	if app.SaveLog {
 		fapp.Use(func(c *fiber.Ctx) error {
 			t := time.Now()

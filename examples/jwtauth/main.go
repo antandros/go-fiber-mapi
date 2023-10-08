@@ -100,7 +100,8 @@ type PriceQuery struct {
 func main() {
 	dapp := gofibermapi.NewApp("mongodb://root:example@10.4.0.102:27017/", "test_fiber_api", "./")
 
-	dapp.BaseURL = []string{"http://localhost:8766"}
+	dapp.BaseURL = []string{"http://localhost:8766", "http://127.0.0.1:8766"}
+	dapp.SetCors([]string{"http://localhost:8766", "http://127.0.0.1:8766"}, []string{})
 	prices2 := app.NewModel[PriceTimes]("price_times2")
 	prices2.SoftDelete = true
 	prices2.QueryParams = PriceQuery{}
