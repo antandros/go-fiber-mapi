@@ -645,6 +645,10 @@ func (gd *GenerateDoc) Generate() {
 			},
 		},
 	}
+	var servers []M
+	for _, uri := range gd.app.BaseURL {
+		servers = append(servers, M{"url": uri})
+	}
 	data := M{
 		"paths": gd.paths,
 		"components": M{
@@ -661,11 +665,7 @@ func (gd *GenerateDoc) Generate() {
 			M{"bearerAuth": []M{}},
 		},
 		"openapi": "3.0.3",
-		"servers": []M{
-			M{
-				"url": gd.app.BaseURL,
-			},
-		},
+		"servers": servers,
 		"info": DocInfo{
 			Version: "1.0",
 			Title:   gd.app.Name,

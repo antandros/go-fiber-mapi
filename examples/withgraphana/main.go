@@ -103,7 +103,7 @@ func main() {
 	dapp.Name = "Test api"
 	dapp.SaveLog = true
 	dapp.Debug = true
-	dapp.BaseURL = "http://127.0.0.1:8766/"
+	dapp.BaseURL = []string{"http://localhost:8766"}
 	prices := app.NewModel[PriceTimes]("price_times")
 	prices.SoftDelete = true
 	prices.UpdateOnAdd(func(item app.M, c *fiber.Ctx) (app.M, error) {

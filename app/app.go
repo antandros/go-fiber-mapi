@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/contrib/fiberzap/v2"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/google/uuid"
@@ -72,7 +73,7 @@ type App struct {
 	MongoClientOptions *options.ClientOptions
 	Name               string
 	Description        string
-	BaseURL            string
+	BaseURL            []string
 	SaveLog            bool
 	LogLife            time.Duration
 	Debug              bool
@@ -275,6 +276,16 @@ func (app *App) FindOneCollection(collection string, query M) *mongo.SingleResul
 }
 func (app *App) AggrageteCollection(collection string, query []M, options ...*options.AggregateOptions) (*mongo.Cursor, error) {
 	return app.dbCon.Collection(collection).Aggregate(app.currentCtx.Context(), query, options...)
+}
+func (app *App) SetCors(origins []string, headers []string) {
+	config := cors.Config{}
+	if len(origins) > 0 {
+		config.AllowOrigins = strings.Join(origins, ",")
+	}
+	if len(headers) > 0 {
+		config.AllowHeaders = strings.Join(headers, ",")
+	}
+	app.fiberApp.Use(cors.New(config))
 }
 func (app *App) LogDbInit() {
 	collections, err := app.dbCon.ListCollectionNames(context.Background(), M{})
