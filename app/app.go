@@ -47,6 +47,7 @@ type ModelInterface interface {
 	PostEndPoints() []*EndPoint
 	PutEndPoints() []*EndPoint
 	DeleteEndPoints() []*EndPoint
+	SetDebug(bool)
 	Generate()
 	GetModelType() interface{}
 	GetName() string
@@ -182,6 +183,7 @@ func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interfac
 	end.path = path
 	end.function = fnc
 	end.responseModel = response
+
 	end.IsPublic = isPublic
 	end.requestbody = request
 	end.docpath = path
@@ -205,6 +207,7 @@ func (app *App) RegisterPostEndpoint(path string, isPublic bool, request interfa
 func (app *App) RegisterModel(item ModelInterface) {
 
 	item.Generate()
+	item.SetDebug(app.Debug)
 	app.models = append(app.models, item)
 }
 

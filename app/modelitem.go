@@ -34,6 +34,7 @@ type ModelItem[model any] struct {
 	IsPublic               bool
 	NoUpdate               bool
 	LimitNoChange          bool
+	Debug                  bool
 	SoftDelete             bool
 	NoGet                  bool
 	responseLimit          int64
@@ -67,6 +68,9 @@ type Response struct {
 	Status     bool   `json:"status,omitempty"`
 }
 
+func (mi *ModelItem[model]) SetDebug(d bool) {
+	mi.Debug = d
+}
 func (mi *ModelItem[model]) R400(c *fiber.Ctx, message string, data any) error {
 	return mi.RError(c, 400, message, data)
 }
@@ -310,6 +314,9 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	}
 	opt.SetSkip(offset)
 	opt.SetLimit(limit)
+	if mi.Debug {
+		fmt.Println("query :", query, "offset:", offset, "limit:", limit, "collection:", mi.collection)
+	}
 	cursor, err := mi.colDb.Find(c.Context(), query)
 	if err != nil {
 		return mi.R500(c, "server error", err)
