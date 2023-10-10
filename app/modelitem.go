@@ -227,7 +227,12 @@ func (mi *ModelItem[model]) SetDb(db *mongo.Database) {
 
 	mi.dbCon = db
 	path := strcase.SnakeCase(mi.name)
-	mi.colDb = mi.dbCon.Collection(path)
+	if mi.collection != "" {
+		mi.colDb = mi.dbCon.Collection(mi.collection)
+	} else {
+
+		mi.colDb = mi.dbCon.Collection(path)
+	}
 }
 func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 	oid := c.Params("id", "")
