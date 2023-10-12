@@ -75,11 +75,15 @@ func (mi *ModelItem[model]) R400(c *fiber.Ctx, message string, data any) error {
 	return mi.RError(c, 400, message, data)
 }
 func (mi *ModelItem[model]) RError(c *fiber.Ctx, code int, message string, data any) error {
+	reqId := c.UserContext().Value("request_id").(string)
 	return c.Status(code).JSON(Response{
 		Message:    message,
 		Status:     false,
 		StatusCode: code,
-		Error:      data,
+		Error: M{
+			"request_id": reqId,
+			"data":       data,
+		},
 	})
 }
 func (mi *ModelItem[model]) R500(c *fiber.Ctx, message string, data any) error {

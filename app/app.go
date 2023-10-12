@@ -165,9 +165,9 @@ func (app *App) authControl(c *fiber.Ctx) error {
 
 			extraQuery, err := app.authMiddleware(c)
 			if err != nil {
-				return c.Status(401).JSON(Response{
+				return c.Status(403).JSON(Response{
 					Message:    "Unauthorized",
-					StatusCode: 401,
+					StatusCode: 403,
 					Error:      err.Error(),
 				})
 			}
@@ -360,6 +360,14 @@ func (app *App) Run(host string) {
 		}
 	}
 	fapp := fiber.New(fConfig)
+	fapp.Use(func(c *fiber.Ctx) error {
+		app.currentCtx = c
+		reqUUid := uuid.NewString()
+		ctx := context.WithValue(c.UserContext(), "request_id", reqUUid)
+		c.Append("X-REQUEST-ID", reqUUid)
+		c.SetUserContext(ctx)
+		return c.Next()
+	})
 	if app.cors != nil {
 		fapp.Use(cors.New(*app.cors))
 	}
@@ -410,14 +418,7 @@ func (app *App) Run(host string) {
 			return fields
 		},
 	}))
-	fapp.Use(func(c *fiber.Ctx) error {
-		app.currentCtx = c
-		reqUUid := uuid.NewString()
-		ctx := context.WithValue(c.UserContext(), "request_id", reqUUid)
-		c.Append("X-REQUEST-ID", reqUUid)
-		c.SetUserContext(ctx)
-		return c.Next()
-	})
+
 	fapp.Get("/metrics", monitor.New())
 	if !app.Debug {
 
