@@ -448,16 +448,16 @@ func (app *App) Run(host string) {
 		endppintput := app.models[i].PutEndPoints()
 		endppintdelete := app.models[i].DeleteEndPoints()
 		for iget := range endppintdelete {
-			fapp.Delete(fmt.Sprintf("api/%s", endppints[iget].path), endppints[iget].function).Name(endppints[iget].Name)
+			fapp.Delete(fmt.Sprintf("api/%s", endppintdelete[iget].path), endppintdelete[iget].function).Name(endppintdelete[iget].Name)
 		}
 		for iget := range endppintput {
-			fapp.Put(fmt.Sprintf("api/%s", endppints[iget].path), endppints[iget].function).Name(endppints[iget].Name)
+			fapp.Put(fmt.Sprintf("api/%s", endppintput[iget].path), endppintput[iget].function).Name(endppintput[iget].Name)
 		}
 		for iget := range endppints {
 			fapp.Get(fmt.Sprintf("api/%s", endppints[iget].path), endppints[iget].function).Name(endppints[iget].Name)
 		}
 		for iget := range endppintspost {
-			fapp.Post(fmt.Sprintf("api/%s", endppintspost[iget].path), endppintspost[iget].function).Name(endppints[iget].Name)
+			fapp.Post(fmt.Sprintf("api/%s", endppintspost[iget].path), endppintspost[iget].function).Name(endppintspost[iget].Name)
 		}
 	}
 	app.fiberApp = fapp
