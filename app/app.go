@@ -66,6 +66,8 @@ type App struct {
 	authMiddleware     func(*fiber.Ctx) (M, error)
 	GetEndPoints       []*EndPoint
 	PostEndPoints      []*EndPoint
+	PutEndPoints       []*EndPoint
+	DeleteEndPoints    []*EndPoint
 	conurl             string
 	logPath            string
 	dbName             string
@@ -149,9 +151,15 @@ func (app *App) authControl(c *fiber.Ctx) error {
 			enpoints = app.GetEndPoints
 		case "POST":
 			enpoints = app.PostEndPoints
+		case "PUT":
+			enpoints = app.PostEndPoints
 		}
 		for i := range enpoints {
-			if strings.EqualFold(enpoints[i].path, elmPath) || enpoints[i].Name == knowName {
+			if app.Debug {
+
+				fmt.Println("find endpoint :", enpoints[i].Name, "knowname:", knowName)
+			}
+			if strings.EqualFold(enpoints[i].path, elmPath) || strings.EqualFold(enpoints[i].Name, knowName) {
 				founded = enpoints[i]
 				break
 			}
@@ -183,7 +191,7 @@ func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interfac
 	end.path = path
 	end.function = fnc
 	end.responseModel = response
-
+	end.IsCustom = true
 	end.IsPublic = isPublic
 	end.requestbody = request
 	end.docpath = path
@@ -196,6 +204,21 @@ func (app *App) RegisterPostEndpoint(path string, isPublic bool, request interfa
 	end.path = path
 	end.function = fnc
 	end.IsPublic = isPublic
+	end.IsPost = true
+	end.IsCustom = true
+	end.responseModel = response
+	end.Name = uuid.NewString()
+	end.docpath = path
+	end.requestbody = request
+	app.PostEndPoints = append(app.PostEndPoints, end)
+	return end
+}
+func (app *App) RegisterPutEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) *EndPoint {
+	end := new(EndPoint)
+	end.path = path
+	end.function = fnc
+	end.IsPublic = isPublic
+	end.IsCustom = true
 	end.IsPost = true
 	end.responseModel = response
 	end.Name = uuid.NewString()
