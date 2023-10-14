@@ -505,5 +505,10 @@ func (app *App) Run(host string) {
 		}
 	}
 	app.fiberApp = fapp
+	if app.Debug {
+		for _, rr := range fapp.GetRoutes() {
+			fmt.Println(rr.Method, rr.Name, rr.Params, rr.Path, rr.Handlers)
+		}
+	}
 	fapp.Listen(host)
 }
