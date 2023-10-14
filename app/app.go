@@ -113,7 +113,11 @@ func (app *App) getPathName(c *fiber.Ctx) string {
 				ptn = ptn[:len(ptn)-1]
 			}
 			ptn2 := fiber.RoutePatternMatch(ptn, rn.Path)
+			ptn3 := fiber.RoutePatternMatch(c.Path(), rn.Path)
 			if ptn2 {
+				return rn.Name
+			}
+			if ptn3 {
 				return rn.Name
 			}
 		}
