@@ -107,14 +107,15 @@ func (app *App) getPathName(c *fiber.Ctx) string {
 			CaseSensitive: false,
 			StrictRouting: false,
 		})*/
-
-		ptn := c.Path()
-		if ptn[len(ptn)-1:] == "/" {
-			ptn = ptn[:len(ptn)-1]
-		}
-		ptn2 := fiber.RoutePatternMatch(ptn, rn.Path)
-		if ptn2 {
-			return rn.Name
+		if rn.Method == c.Method() {
+			ptn := c.Path()
+			if ptn[len(ptn)-1:] == "/" {
+				ptn = ptn[:len(ptn)-1]
+			}
+			ptn2 := fiber.RoutePatternMatch(ptn, rn.Path)
+			if ptn2 {
+				return rn.Name
+			}
 		}
 	}
 	return ""
