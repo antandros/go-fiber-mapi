@@ -40,6 +40,15 @@ type EndPoint struct {
 	path          string
 	docpath       string
 }
+
+func (end *EndPoint) SetName(name string) {
+	end.Name = name
+}
+
+func (end *EndPoint) SetDescription(desc string) {
+	end.Description = desc
+}
+
 type M map[string]interface{}
 
 type ModelInterface interface {
