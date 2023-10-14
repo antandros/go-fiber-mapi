@@ -477,6 +477,9 @@ func (app *App) Run(host string) {
 	NewDoc(app)
 
 	for _, end := range app.GetEndPoints {
+		if app.Debug {
+			fmt.Println(end.Name, end.path)
+		}
 		fapp.Get(end.path, end.function).Name(end.Name)
 	}
 
