@@ -115,7 +115,7 @@ func (app *App) getPathName(c *fiber.Ctx) string {
 			ptn2 := fiber.RoutePatternMatch(ptn, rn.Path)
 			ptn3 := fiber.RoutePatternMatch(c.Path(), rn.Path)
 			if app.Debug {
-				fmt.Println("ptn", ptn, "ptn2", ptn2, "ptn3", ptn3, "path", c.Path())
+				fmt.Println("ptn", ptn, "ptn2", ptn2, "ptn3", ptn3, "path", c.Path(), "rn path", rn.Path, "rn name", rn.Name)
 			}
 			if ptn2 {
 				return rn.Name
@@ -402,6 +402,7 @@ func (app *App) Run(host string) {
 	if app.cors != nil {
 		fapp.Use(cors.New(*app.cors))
 	}
+	fapp.Use(app.authControl)
 	if app.SaveLog {
 		fapp.Use(func(c *fiber.Ctx) error {
 			t := time.Now()
@@ -465,7 +466,7 @@ func (app *App) Run(host string) {
 		))
 	}
 	NewDoc(app)
-	fapp.Use(app.authControl)
+
 	for _, end := range app.GetEndPoints {
 		fapp.Get(end.path, end.function).Name(end.Name)
 	}
