@@ -45,6 +45,7 @@ type ModelItem[model any] struct {
 	DescTags               []string
 	QueryParams            interface{}
 	modelType              reflect.Type
+	AfterOnAddFunction     func(item any, c *fiber.Ctx) error
 	UpdateOnAddFunction    func(item M, c *fiber.Ctx) (M, error)
 	UpdateOnUpdateFunction func(item M, c *fiber.Ctx) (M, error)
 	endpointsGet           []*EndPoint
@@ -175,6 +176,9 @@ func (mi *ModelItem[model]) GetAggregate(c *fiber.Ctx, aggrage []M, requestItem 
 
 func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
+}
+func (mi *ModelItem[model]) AfterOnAdd(fnc func(item any, c *fiber.Ctx) error) {
+	mi.AfterOnAddFunction = fnc
 }
 func (mi *ModelItem[model]) UpdateOnUpdate(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
@@ -385,6 +389,9 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
+	if mi.AfterOnAddFunction != nil {
+		return mi.AfterOnAddFunction(&insertobj, c)
+	}
 	return mi.R201(c, "item created", &insertobj)
 }
 func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
@@ -422,6 +429,9 @@ func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 	err = itmCur.Decode(insertobj)
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
+	}
+	if mi.AfterOnAddFunction != nil {
+		return mi.AfterOnAddFunction(&insertobj, c)
 	}
 	return mi.R201(c, "item created", &insertobj)
 }
