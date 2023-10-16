@@ -139,6 +139,9 @@ func (app *App) getPathName(c *fiber.Ctx) string {
 }
 func (app *App) authControl(c *fiber.Ctx) error {
 	elmPath := strings.ReplaceAll(c.Path(), "/api/", "")
+	if elmPath[len(elmPath)-1:] != "/" {
+		elmPath = fmt.Sprintf("%s/", elmPath)
+	}
 	knowName := app.getPathName(c)
 	if app.authMiddleware != nil {
 		route := c.Route()
@@ -152,6 +155,10 @@ func (app *App) authControl(c *fiber.Ctx) error {
 				enpoints = app.models[i].GetEndPoints()
 			case "POST":
 				enpoints = app.models[i].PostEndPoints()
+			case "DELETE":
+				enpoints = app.models[i].DeleteEndPoints()
+			case "PUT":
+				enpoints = app.models[i].PutEndPoints()
 			}
 			for _, endpoint := range enpoints {
 				if app.Debug {
