@@ -137,7 +137,7 @@ func (app *App) getPathName(c *fiber.Ctx) string {
 	return ""
 }
 func (app *App) authControl(c *fiber.Ctx) error {
-	elmPath := strings.ReplaceAll(c.OriginalURL(), "/api/", "")
+	elmPath := strings.ReplaceAll(c.Path(), "/api/", "")
 	knowName := app.getPathName(c)
 	if app.authMiddleware != nil {
 		route := c.Route()
