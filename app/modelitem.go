@@ -328,8 +328,9 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	opt.SetLimit(limit)
 	if mi.Debug {
 		fmt.Println("query :", query, "offset:", offset, "limit:", limit, "collection:", mi.collection, "collection dd:", mi.colDb.Name())
+		fmt.Println("Limit:", limit, "Skip:", offset)
 	}
-	cursor, err := mi.colDb.Find(c.Context(), query)
+	cursor, err := mi.colDb.Find(c.Context(), query, opt)
 	if err != nil {
 		return mi.R500(c, "server error", err)
 	}
