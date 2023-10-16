@@ -153,6 +153,9 @@ func (app *App) authControl(c *fiber.Ctx) error {
 				enpoints = app.models[i].PostEndPoints()
 			}
 			for _, endpoint := range enpoints {
+				if app.Debug {
+					fmt.Println("Model Find", "endpoint.path", endpoint.path, "elmPath", elmPath, "endpoint", endpoint.Name, "knowName", knowName)
+				}
 				if strings.EqualFold(endpoint.path, elmPath) || endpoint.Name == knowName {
 					founded = endpoint
 					c.Locals("model", app.models[i])
