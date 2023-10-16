@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -509,9 +510,9 @@ func (app *App) Run(host string) {
 	}
 	app.fiberApp = fapp
 	if app.Debug {
-		for _, rr := range fapp.GetRoutes() {
-			fmt.Println(rr.Method, rr.Name, rr.Params, rr.Path, rr.Handlers)
-		}
+		data, _ := json.MarshalIndent(fapp.Stack(), "", "  ")
+		fmt.Println(string(data))
+
 	}
 	fapp.Listen(host)
 }
