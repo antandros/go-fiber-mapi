@@ -527,7 +527,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoDelete {
 		mi.endpointsDelete = append(mi.endpointsDelete, &EndPoint{
 			function:      mi.DeleteItem,
-			Name:          mi.name,
+			Name:          fmt.Sprintf("Delete%s", mi.name),
 			responseModel: Response{},
 			Single:        true,
 			path:          fmt.Sprintf("%s/:id", path),
@@ -537,7 +537,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoGet {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItem,
-			Name:          mi.name,
+			Name:          fmt.Sprintf("Get%s", mi.name),
 			Single:        true,
 			responseModel: Response{},
 			QueryParams:   mi.QueryParams,
@@ -548,7 +548,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoUpdate {
 		mi.endpointsPut = append(mi.endpointsPut, &EndPoint{
 			function:      mi.GetItem,
-			Name:          mi.name,
+			Name:          fmt.Sprintf("Update%s", mi.name),
 			Single:        true,
 			responseModel: Response{},
 			path:          fmt.Sprintf("%s/:id", path),
@@ -558,7 +558,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoList {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItems,
-			Name:          mi.name,
+			Name:          fmt.Sprintf("List%s", mi.name),
 			List:          true,
 			QueryParams:   mi.QueryParams,
 			responseModel: Response{},
@@ -569,7 +569,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoInsert {
 		mi.endpointsPost = append(mi.endpointsPost, &EndPoint{
 			function:      mi.CreateItem,
-			Name:          mi.name,
+			Name:          fmt.Sprintf("Create%s", mi.name),
 			responseModel: Response{},
 			Single:        true,
 			path:          fmt.Sprintf("%s/", path),
