@@ -491,21 +491,25 @@ func (app *App) Run(host string) {
 		fapp.Post(end.path, end.function).Name(end.Name)
 	}
 	for i := range app.models {
-		endppints := app.models[i].GetEndPoints()
+		endppintsget := app.models[i].GetEndPoints()
 		endppintspost := app.models[i].PostEndPoints()
 		endppintput := app.models[i].PutEndPoints()
 		endppintdelete := app.models[i].DeleteEndPoints()
 		for iget := range endppintdelete {
-			fapp.Delete(fmt.Sprintf("api/%s", endppintdelete[iget].path), endppintdelete[iget].function).Name(endppintdelete[iget].Name)
+			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintdelete[iget].Name, uuid.NewString())
+			fapp.Delete(fmt.Sprintf("api/%s", endppintdelete[iget].path), endppintdelete[iget].function).Name(pName)
 		}
 		for iget := range endppintput {
-			fapp.Put(fmt.Sprintf("api/%s", endppintput[iget].path), endppintput[iget].function).Name(endppintput[iget].Name)
+			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintput[iget].Name, uuid.NewString())
+			fapp.Put(fmt.Sprintf("api/%s", endppintput[iget].path), endppintput[iget].function).Name(pName)
 		}
-		for iget := range endppints {
-			fapp.Get(fmt.Sprintf("api/%s", endppints[iget].path), endppints[iget].function).Name(endppints[iget].Name)
+		for iget := range endppintsget {
+			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintsget[iget].Name, uuid.NewString())
+			fapp.Get(fmt.Sprintf("api/%s", endppintsget[iget].path), endppintsget[iget].function).Name(pName)
 		}
 		for iget := range endppintspost {
-			fapp.Post(fmt.Sprintf("api/%s", endppintspost[iget].path), endppintspost[iget].function).Name(endppintspost[iget].Name)
+			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintspost[iget].Name, uuid.NewString())
+			fapp.Post(fmt.Sprintf("api/%s", endppintspost[iget].path), endppintspost[iget].function).Name(pName)
 		}
 	}
 	app.fiberApp = fapp
