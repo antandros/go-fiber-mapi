@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/stoewer/go-strcase"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -528,7 +527,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoDelete {
 		mi.endpointsDelete = append(mi.endpointsDelete, &EndPoint{
 			function:      mi.DeleteItem,
-			Name:          uuid.NewString(),
+			Name:          mi.name,
 			responseModel: Response{},
 			Single:        true,
 			path:          fmt.Sprintf("%s/:id", path),
@@ -538,7 +537,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoGet {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItem,
-			Name:          uuid.NewString(),
+			Name:          mi.name,
 			Single:        true,
 			responseModel: Response{},
 			QueryParams:   mi.QueryParams,
@@ -549,7 +548,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoUpdate {
 		mi.endpointsPut = append(mi.endpointsPut, &EndPoint{
 			function:      mi.GetItem,
-			Name:          uuid.NewString(),
+			Name:          mi.name,
 			Single:        true,
 			responseModel: Response{},
 			path:          fmt.Sprintf("%s/:id", path),
@@ -559,7 +558,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoList {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItems,
-			Name:          uuid.NewString(),
+			Name:          mi.name,
 			List:          true,
 			QueryParams:   mi.QueryParams,
 			responseModel: Response{},
@@ -570,7 +569,7 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoInsert {
 		mi.endpointsPost = append(mi.endpointsPost, &EndPoint{
 			function:      mi.CreateItem,
-			Name:          uuid.NewString(),
+			Name:          mi.name,
 			responseModel: Response{},
 			Single:        true,
 			path:          fmt.Sprintf("%s/", path),
