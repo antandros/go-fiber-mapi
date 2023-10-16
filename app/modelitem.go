@@ -335,6 +335,7 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 		return mi.R500(c, "server error", err)
 	}
 	pnm := mi.model.(reflect.Type)
+	cursorCount, _ := mi.colDb.CountDocuments(c.Context(), query)
 	totalLength := cursor.RemainingBatchLength()
 	sliceElem := reflect.SliceOf(pnm)
 	respItems := reflect.MakeSlice(sliceElem, totalLength, totalLength).Interface()
@@ -346,7 +347,7 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	}
 
 	return mi.R200(c, "", M{
-		"total": totalLength,
+		"total": cursorCount,
 		"items": respItems,
 		"start": offset,
 	})
