@@ -680,17 +680,17 @@ func (gd *GenerateDoc) Generate() {
 		"paths": gd.paths,
 		"components": M{
 			"schemas": gd.schemas,
-			"securitySchemes": M{
+			/*"securitySchemes": M{
 				"bearerAuth": M{
 					"type":         "http",
 					"scheme":       "bearer",
 					"bearerFormat": "JWT",
 				},
-			},
+			},*/
 		},
-		"security": []M{
+		/*"security": []M{
 			M{"bearerAuth": []M{}},
-		},
+		},*/
 		"openapi": "3.0.3",
 		"servers": servers,
 		"info": DocInfo{
