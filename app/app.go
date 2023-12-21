@@ -37,6 +37,8 @@ type EndPoint struct {
 	Single        bool
 	List          bool
 	Name          string
+	PrimaryId     string
+	Tags          []string
 	Description   string
 	path          string
 	docpath       string
@@ -93,6 +95,9 @@ type App struct {
 	Debug              bool
 }
 
+func (app *App) GetDb() *mongo.Database {
+	return app.dbCon
+}
 func (app *App) CreateConnection() {
 	opt := options.Client()
 	if app.MongoClientOptions != nil {
@@ -214,14 +219,16 @@ func (app *App) authControl(c *fiber.Ctx) error {
 	}
 	return c.Next()
 }
-func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error) *EndPoint {
+func (app *App) RegisterGetEndpoint(path string, isPublic bool, request interface{}, response interface{}, fnc func(*fiber.Ctx) error, tags []string) *EndPoint {
 	end := new(EndPoint)
 	end.path = path
+
 	end.function = fnc
 	end.responseModel = response
 	end.IsCustom = true
 	end.IsPublic = isPublic
 	end.requestbody = request
+	end.Tags = tags
 	end.docpath = path
 	end.Name = uuid.NewString()
 	app.GetEndPoints = append(app.GetEndPoints, end)
@@ -449,7 +456,7 @@ func (app *App) Run(host string) {
 				RequestIp:       c.IP(),
 				RequestIpS:      c.IPs(),
 				RawRequest:      c.Request().String(),
-				RawResponse:     c.Request().String(),
+				RawResponse:     c.Response().String(),
 				RequestHeaders:  c.GetReqHeaders(),
 				ResponseHeaders: c.GetRespHeaders(),
 			}

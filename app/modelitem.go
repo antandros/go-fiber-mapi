@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -38,9 +39,13 @@ type ModelItem[model any] struct {
 	NoGet                  bool
 	responseLimit          int64
 	NoList                 bool
+	FeildsToTypes          map[string]interface{}
 	collection             string
 	Title                  string
 	Description            string
+	PrimaryId              string
+	PrimaryIdType          string
+	PrimaryIdBsonName      string
 	DescTags               []string
 	QueryParams            interface{}
 	modelType              reflect.Type
@@ -243,22 +248,41 @@ func (mi *ModelItem[model]) SetDb(db *mongo.Database) {
 }
 func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 	oid := c.Params("id", "")
+	if mi.PrimaryId != "" {
+		oid = c.Params(mi.PrimaryId, "")
+	}
 	if oid != "" {
 		var err error
-		objectId, err := primitive.ObjectIDFromHex(oid)
-		if err != nil {
-			return mi.R400(c, "objectId decode error", M{"error": err})
-		}
 		query := M{}
 		extraQuery := c.Locals("authQuery")
 		if extraQuery != nil {
 			query = extraQuery.(M)
 		}
-		query["_id"] = objectId
+		if mi.PrimaryId != "" {
+
+			if strings.HasPrefix(strings.ToLower(mi.PrimaryIdType), "int") || strings.HasPrefix(strings.ToLower(mi.PrimaryIdType), "uint") {
+				data, err := strconv.Atoi(oid)
+				if err != nil {
+					return mi.R400(c, "item integer decode error", M{"error": err})
+				}
+				query[mi.PrimaryIdBsonName] = data
+			} else {
+				query[mi.PrimaryIdBsonName] = oid
+			}
+			fmt.Println(query[mi.PrimaryIdBsonName])
+		} else {
+			objectId, err := primitive.ObjectIDFromHex(oid)
+			if err != nil {
+				return mi.R400(c, "objectId decode error", M{"error": err})
+			}
+			query["_id"] = objectId
+		}
+
 		if mi.SoftDelete {
 			query["is_deleted"] = false
 
 		}
+		fmt.Println("query", query, mi.PrimaryIdType)
 		item := mi.colDb.FindOne(c.Context(), query)
 		if item.Err() != nil {
 			return mi.R404(c, "item not found")
@@ -286,9 +310,10 @@ func (mi *ModelItem[model]) GenerateQueryParams(data map[string]string, mapData 
 		fld := field.Tag
 		ftag := fld.Get("field")
 		jtag := fld.Get("json")
-
+		fmt.Println(ftag)
 		if ftag != "-" && ftag != "" && jtag != "" {
 			jName := strings.Split(jtag, ",")[0]
+			fmt.Println(data)
 			if fieldData, ok := data[jName]; ok {
 				mapData[ftag] = ConvertType(fieldData, vfield)
 			}
@@ -312,13 +337,14 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	if mi.responseLimit > 0 {
 		limit = mi.responseLimit
 	}
-
+	fmt.Println(mi.QueryParams)
 	if mi.QueryParams != nil {
 
 		mi.GenerateQueryParams(c.Queries(), query)
 	}
+	fmt.Println(query)
 	if !mi.LimitNoChange && c.QueryInt("limit", 0) != 0 {
-		limit = int64(c.QueryInt("limit", 0))
+		limit = int64(c.QueryInt("limit", 10))
 	}
 	offset := int64(0)
 	if c.QueryInt("offset", 0) > 0 {
@@ -336,9 +362,8 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	}
 	pnm := mi.model.(reflect.Type)
 	cursorCount, _ := mi.colDb.CountDocuments(c.Context(), query)
-	totalLength := cursor.RemainingBatchLength()
 	sliceElem := reflect.SliceOf(pnm)
-	respItems := reflect.MakeSlice(sliceElem, totalLength, totalLength).Interface()
+	respItems := reflect.MakeSlice(sliceElem, int(limit), int(limit)).Interface()
 
 	err = cursor.All(c.Context(), &respItems)
 	if err != nil {
@@ -469,19 +494,41 @@ func (mi *ModelItem[model]) DeleteItem(c *fiber.Ctx) error {
 func (mi *ModelItem[model]) GetModelType() interface{} {
 	return mi.model
 }
+
+type BaseQueryParams struct{}
+
 func (mi *ModelItem[model]) Tags() {
+	mi.modelType = reflect.TypeOf(mi.model).Elem()
 	mi.modelType = reflect.TypeOf(mi.model).Elem()
 	lenField := mi.modelType.NumField()
 	f := []reflect.StructField{}
+	queryInterface := []reflect.StructField{}
 	hasId := false
 	hasDeleted := false
+
+	mapToType := make(map[string]interface{})
+	queryModels := make(map[string]map[string]interface{})
 	for i := 0; i < lenField; i++ {
 		fld := mi.modelType.Field(i).Tag
 		hasJson := fld.Get("json")
 		hasBson := fld.Get("bson")
+		hasQuery := fld.Get("mapi")
+
 		field := mi.modelType.Field(i)
 		name := field.Name
+		mapToType[name] = field.Type
+		if hasQuery != "" {
+			queryModels[name] = make(map[string]interface{})
+			queryModels[name]["tag"] = hasQuery
+			queryModels[name]["type"] = field.Type
+			reqType := strings.Split(hasQuery, ",")
+			if reqType[0] == "primary" {
+				mi.PrimaryId = strings.Split(hasJson, ",")[0]
+				mi.PrimaryIdType = field.Type.Name()
+				mi.PrimaryIdBsonName = strings.Split(hasBson, ",")[0]
+			}
 
+		}
 		if hasBson == "" {
 			hasBson = fmt.Sprintf("%s,omitempty", strcase.SnakeCase(name))
 		}
@@ -491,7 +538,7 @@ func (mi *ModelItem[model]) Tags() {
 		f = append(f, reflect.StructField{
 			Name: name,
 			Type: field.Type,
-			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" bson:"%s"`, hasJson, hasBson)),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" bson:"%s" mapi:"%s"`, hasJson, hasBson, hasQuery)),
 		})
 		if name == "Id" {
 			hasId = true
@@ -517,7 +564,16 @@ func (mi *ModelItem[model]) Tags() {
 			})
 		}
 	}
+
 	mi.model = reflect.StructOf(f)
+	for key, val := range queryModels {
+		queryInterface = append(queryInterface, reflect.StructField{
+			Name: key,
+			Type: val["type"].(reflect.Type),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" mapi:"%s"`, key, val["tag"].(string))),
+		})
+	}
+
 }
 func (mi *ModelItem[model]) GetName() string {
 	return mi.name
@@ -525,14 +581,19 @@ func (mi *ModelItem[model]) GetName() string {
 func (mi *ModelItem[model]) Generate() {
 	mi.name = reflect.TypeOf(mi.modelIt).Elem().Name()
 	path := strcase.SnakeCase(mi.name)
+	primary := "id"
+	if mi.PrimaryId != "" {
+		primary = mi.PrimaryId
+	}
 	if !mi.NoDelete {
 		mi.endpointsDelete = append(mi.endpointsDelete, &EndPoint{
 			function:      mi.DeleteItem,
 			Name:          fmt.Sprintf("Delete%s", mi.name),
 			responseModel: Response{},
+			PrimaryId:     primary,
 			Single:        true,
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoGet {
@@ -540,10 +601,11 @@ func (mi *ModelItem[model]) Generate() {
 			function:      mi.GetItem,
 			Name:          fmt.Sprintf("Get%s", mi.name),
 			Single:        true,
+			PrimaryId:     primary,
 			responseModel: Response{},
 			QueryParams:   mi.QueryParams,
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoUpdate {
@@ -551,9 +613,10 @@ func (mi *ModelItem[model]) Generate() {
 			function:      mi.GetItem,
 			Name:          fmt.Sprintf("Update%s", mi.name),
 			Single:        true,
+			PrimaryId:     primary,
 			responseModel: Response{},
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoList {
@@ -561,6 +624,7 @@ func (mi *ModelItem[model]) Generate() {
 			function:      mi.GetItems,
 			Name:          fmt.Sprintf("List%s", mi.name),
 			List:          true,
+			PrimaryId:     primary,
 			QueryParams:   mi.QueryParams,
 			responseModel: Response{},
 			path:          fmt.Sprintf("%s/", path),
@@ -573,6 +637,7 @@ func (mi *ModelItem[model]) Generate() {
 			Name:          fmt.Sprintf("Create%s", mi.name),
 			responseModel: Response{},
 			Single:        true,
+			PrimaryId:     primary,
 			path:          fmt.Sprintf("%s/", path),
 			docpath:       fmt.Sprintf("/api/%s/", path),
 		})
