@@ -378,13 +378,16 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 							"type": "boolean",
 						},
 						"result": M{
-							"start": M{
-								"type": "integer",
+							"type": "object",
+							"properties": M{
+								"start": M{
+									"type": "integer",
+								},
+								"total": M{
+									"type": "integer",
+								},
+								"items": responseBase,
 							},
-							"total": M{
-								"type": "integer",
-							},
-							"items": responseBase,
 						},
 					},
 				},
