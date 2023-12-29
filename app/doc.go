@@ -340,6 +340,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 			}
 		}
 	}
+
 	returnSchema := DocResponse{
 		Description: "Response",
 		Content: M{"application/json": M{
@@ -359,6 +360,37 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 				},
 			},
 		}},
+	}
+	if endpoint.List {
+		returnSchema = DocResponse{
+			Description: "Response",
+			Content: M{"application/json": M{
+				"schema": M{
+					"type": "object",
+					"properties": M{
+						"message": M{
+							"type": "string",
+						},
+						"status_code": M{
+							"type": "integer",
+						},
+						"status": M{
+							"type": "boolean",
+						},
+						"result": M{
+							"start": M{
+								"type": "integer",
+							},
+							"total": M{
+								"type": "integer",
+							},
+							"items": responseBase,
+						},
+					},
+				},
+			}},
+		}
+
 	}
 	notFoundResponse := DocResponse{
 		Description: "item not found",
