@@ -14,6 +14,6 @@ type ApiLog struct {
 	RequestIpS      []string
 	RawRequest      string
 	RawResponse     string
-	RequestHeaders  map[string]string
-	ResponseHeaders map[string]string
+	RequestHeaders  map[string][]string
+	ResponseHeaders map[string][]string
 }
