@@ -72,6 +72,19 @@ type Response struct {
 	Error      any    `json:"error,omitempty"`
 	Status     bool   `json:"status,omitempty"`
 }
+type ResultItems struct {
+	Total int           `json:"total,omitempty"`
+	Start int           `json:"start,omitempty"`
+	Items []interface{} `json:"items,omitempty"`
+}
+type ResponseList struct {
+	Response
+	Message    string      `json:"message,omitempty"`
+	StatusCode int         `json:"status_code,omitempty"`
+	Result     ResultItems `json:"result,omitempty"`
+	Error      any         `json:"error,omitempty"`
+	Status     bool        `json:"status,omitempty"`
+}
 
 func (mi *ModelItem[model]) SetDebug(d bool) {
 	mi.Debug = d
@@ -105,8 +118,16 @@ func (mi *ModelItem[model]) ROk(c *fiber.Ctx, code int, message string, data any
 		Result:     data,
 	})
 }
+func (mi *ModelItem[model]) ROkList(c *fiber.Ctx, code int, message string, data ResultItems) error {
+	return c.Status(code).JSON(ResponseList{
+		Result: data,
+	})
+}
 func (mi *ModelItem[model]) R200(c *fiber.Ctx, message string, data any) error {
 	return mi.ROk(c, 200, message, data)
+}
+func (mi *ModelItem[model]) R200List(c *fiber.Ctx, message string, data ResultItems) error {
+	return mi.ROkList(c, 200, message, data)
 }
 func (mi *ModelItem[model]) R201(c *fiber.Ctx, message string, data any) error {
 	return mi.ROk(c, 201, message, data)
@@ -371,10 +392,10 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 		return mi.R500(c, "server error", err.Error())
 	}
 
-	return mi.R200(c, "", M{
-		"total": cursorCount,
-		"items": respItems,
-		"start": offset,
+	return mi.R200List(c, "", ResultItems{
+		Total: int(cursorCount),
+		Start: int(offset),
+		Items: respItems.([]interface{}),
 	})
 
 }
@@ -626,7 +647,7 @@ func (mi *ModelItem[model]) Generate() {
 			List:          true,
 			PrimaryId:     primary,
 			QueryParams:   mi.QueryParams,
-			responseModel: Response{},
+			responseModel: ResponseList{},
 			path:          fmt.Sprintf("%s/", path),
 			docpath:       fmt.Sprintf("/api/%s/", path),
 		})
