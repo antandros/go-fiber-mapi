@@ -73,9 +73,9 @@ type Response struct {
 	Status     bool   `json:"status,omitempty"`
 }
 type ResultItems struct {
-	Total int           `json:"total,omitempty"`
-	Start int           `json:"start,omitempty"`
-	Items []interface{} `json:"items,omitempty"`
+	Total int   `json:"total,omitempty"`
+	Start int   `json:"start,omitempty"`
+	Items []any `json:"items,omitempty"`
 }
 type ResponseList struct {
 	Response
