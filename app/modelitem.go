@@ -73,9 +73,9 @@ type Response struct {
 	Status     bool   `json:"status,omitempty"`
 }
 type ResultItems struct {
-	Total int   `json:"total,omitempty"`
-	Start int   `json:"start,omitempty"`
-	Items []any `json:"items,omitempty"`
+	Total int `json:"total,omitempty"`
+	Start int `json:"start,omitempty"`
+	Items any `json:"items,omitempty"`
 }
 type ResponseList struct {
 	Response
@@ -395,7 +395,7 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	return mi.R200List(c, "", ResultItems{
 		Total: int(cursorCount),
 		Start: int(offset),
-		Items: respItems.([]interface{}),
+		Items: respItems,
 	})
 
 }
