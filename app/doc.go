@@ -104,6 +104,10 @@ func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type, inRequest bool) M {
 				case "flo":
 					typeText = "number"
 					typeFormat = field.Type.Name()
+				case "boo":
+					typeText = "boolean"
+					typeFormat = field.Type.Name()
+
 				default:
 					typeText = "string"
 
