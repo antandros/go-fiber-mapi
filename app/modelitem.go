@@ -89,6 +89,9 @@ type ResponseList struct {
 func (mi *ModelItem[model]) SetDebug(d bool) {
 	mi.Debug = d
 }
+func (mi *ModelItem[model]) SetPublic(d bool) {
+	mi.IsPublic = d
+}
 func (mi *ModelItem[model]) R400(c *fiber.Ctx, message string, data any) error {
 	return mi.RError(c, 400, message, data)
 }
