@@ -148,6 +148,7 @@ func (app *App) authControl(c *fiber.Ctx) error {
 		elmPath = fmt.Sprintf("%s/", elmPath)
 	}
 	knowName := app.getPathName(c)
+	fmt.Println("knowName", knowName)
 	if app.authMiddleware != nil {
 		route := c.Route()
 
@@ -171,34 +172,43 @@ func (app *App) authControl(c *fiber.Ctx) error {
 				}
 				if strings.EqualFold(endpoint.path, elmPath) || endpoint.Name == knowName {
 					founded = endpoint
+					fmt.Println("is found ?")
 					c.Locals("model", app.models[i])
-					break
+					continue
 				}
+			}
+			if founded != nil {
+				break
 			}
 
 		}
 		var enpoints []*EndPoint
 		c.Append("X-REQUEST-MTH", knowName)
-		switch route.Method {
-		case "GET":
-			enpoints = app.GetEndPoints
-		case "POST":
-			enpoints = app.PostEndPoints
-		case "PUT":
-			enpoints = app.PostEndPoints
-		}
-		for i := range enpoints {
-			if app.Debug {
+		if founded == nil {
+			switch route.Method {
+			case "GET":
+				enpoints = app.GetEndPoints
+			case "POST":
+				enpoints = app.PostEndPoints
+			case "PUT":
+				fmt.Println("call put")
+				enpoints = app.PutEndPoints
+			}
+			for i := range enpoints {
+				if app.Debug {
 
-				fmt.Println("find endpoint :", enpoints[i].Name, "knowname:", knowName)
-			}
-			if strings.EqualFold(enpoints[i].path, elmPath) || strings.EqualFold(enpoints[i].Name, knowName) {
-				founded = enpoints[i]
-				break
+					fmt.Println("find endpoint :", enpoints[i].Name, "knowname:", knowName)
+				}
+				if strings.EqualFold(enpoints[i].path, elmPath) || strings.EqualFold(enpoints[i].Name, knowName) {
+					founded = enpoints[i]
+					break
+				}
 			}
 		}
-		c.Locals("endpoint", founded)
+
 		if founded != nil {
+			c.Locals("endpoint", founded)
+			fmt.Println("put found", founded.IsPublic)
 			c.Append("X-REQUEST-FND", founded.Name)
 			if founded.IsPublic {
 				return c.Next()
@@ -214,6 +224,8 @@ func (app *App) authControl(c *fiber.Ctx) error {
 			}
 			c.Locals("authQuery", extraQuery)
 			return c.Next()
+		} else {
+			fmt.Println("not founded")
 		}
 
 	}
@@ -512,18 +524,23 @@ func (app *App) Run(host string) {
 		for iget := range endppintdelete {
 			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintdelete[iget].Name, uuid.NewString())
 			fapp.Delete(fmt.Sprintf("api/%s", endppintdelete[iget].path), endppintdelete[iget].function).Name(pName)
+			endppintdelete[iget].Name = pName
 		}
 		for iget := range endppintput {
 			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintput[iget].Name, uuid.NewString())
 			fapp.Put(fmt.Sprintf("api/%s", endppintput[iget].path), endppintput[iget].function).Name(pName)
+			endppintput[iget].Name = pName
 		}
 		for iget := range endppintsget {
 			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintsget[iget].Name, uuid.NewString())
 			fapp.Get(fmt.Sprintf("api/%s", endppintsget[iget].path), endppintsget[iget].function).Name(pName)
+			endppintsget[iget].Name = pName
 		}
 		for iget := range endppintspost {
 			pName := fmt.Sprintf("%d-%d-%s-%s", iget, i, endppintspost[iget].Name, uuid.NewString())
+
 			fapp.Post(fmt.Sprintf("api/%s", endppintspost[iget].path), endppintspost[iget].function).Name(pName)
+			endppintspost[iget].Name = pName
 		}
 	}
 	app.fiberApp = fapp

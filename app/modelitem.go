@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stoewer/go-strcase"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -327,6 +329,10 @@ func (mi *ModelItem[model]) GenerateQueryParams(data map[string]string, mapData 
 	mType := reflect.TypeOf(mi.QueryParams)
 	vType := reflect.ValueOf(mi.QueryParams)
 
+	lenModel := mi.modelType.NumField()
+	pnm := mi.model.(reflect.Type)
+	insertobj := reflect.New(pnm).Interface()
+	mModelValue := reflect.ValueOf(insertobj)
 	lenField := mType.NumField()
 	for i := 0; i < lenField; i++ {
 		field := mType.Field(i)
@@ -334,12 +340,39 @@ func (mi *ModelItem[model]) GenerateQueryParams(data map[string]string, mapData 
 		fld := field.Tag
 		ftag := fld.Get("field")
 		jtag := fld.Get("json")
-		fmt.Println(ftag)
+
 		if ftag != "-" && ftag != "" && jtag != "" {
 			jName := strings.Split(jtag, ",")[0]
-			fmt.Println(data)
+			var mFieldItem *reflect.Value
 			if fieldData, ok := data[jName]; ok {
-				mapData[ftag] = ConvertType(fieldData, vfield)
+
+				for im := 0; im < lenModel; im++ {
+					mField := mi.modelType.Field(im)
+
+					mTag, ok := mField.Tag.Lookup("json")
+					if !ok {
+						mTag, ok = mField.Tag.Lookup("bson")
+					}
+					if ok {
+						name := strings.Split(mTag, ",")[0]
+						if name == ftag {
+							mFieldVal := mModelValue.Elem().Field(im)
+							mFieldItem = &mFieldVal
+						}
+					}
+				}
+				basename := strings.Split(ftag, ",")
+
+				mapData[basename[0]] = ConvertType(fieldData, vfield)
+				if mFieldItem != nil {
+					mapData[basename[0]] = ConvertType(fieldData, *mFieldItem)
+				}
+				if len(basename) > 1 {
+					action := basename[1]
+					if action == "search" {
+						mapData[basename[0]] = M{"$regex": fmt.Sprintf("(?i)%v", mapData[basename[0]]), "$options": "si"}
+					}
+				}
 			}
 		}
 	}
@@ -403,6 +436,7 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 
 }
 func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
+
 	pnm := mi.model.(reflect.Type)
 	insertobj := reflect.New(pnm).Interface()
 
@@ -426,12 +460,19 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 			return mi.R500(c, "internal server error", err.Error())
 		}
 	}
-	insertId, err := mi.colDb.InsertOne(c.Context(), adata)
+	strId := c.Params("id", "")
+	if strId == "" {
+		return mi.R400(c, "field error", errors.New("sensor id need"))
+	}
+	insertId, err := primitive.ObjectIDFromHex(strId)
+	if err != nil {
+		return mi.R400(c, "field error", errors.New("sensor id is incorrect"))
+	}
+	_, err = mi.colDb.UpdateByID(c.Context(), insertId, bson.M{"$set": adata})
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
-	objId := insertId.InsertedID.(primitive.ObjectID)
-	itmCur := mi.colDb.FindOne(c.Context(), M{"_id": objId})
+	itmCur := mi.colDb.FindOne(c.Context(), M{"_id": insertId})
 	if itmCur.Err() != nil {
 		return mi.R500(c, "internal server error", itmCur.Err())
 	}
@@ -442,23 +483,23 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 	if mi.AfterOnAddFunction != nil {
 		return mi.AfterOnAddFunction(&insertobj, c)
 	}
-	return mi.R201(c, "item created", &insertobj)
+	return mi.R200(c, "item updated", &insertobj)
 }
 func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 	pnm := mi.model.(reflect.Type)
+	reqobj := reflect.New(pnm).Interface()
 	insertobj := reflect.New(pnm).Interface()
 
-	err := c.BodyParser(&insertobj)
+	err := c.BodyParser(&reqobj)
 
 	if err != nil {
 		return mi.R400(c, "body parse error", err.Error())
 	}
-	bb, _ := json.MarshalIndent(insertobj, "", "\t")
+	bb, _ := json.MarshalIndent(reqobj, "", "\t")
 	var adata M
 	json.Unmarshal(bb, &adata)
 	if mi.SoftDelete {
 		adata["is_deleted"] = false
-
 	}
 	delete(adata, "id")
 	if mi.UpdateOnAddFunction != nil {
@@ -467,7 +508,9 @@ func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 			return mi.R500(c, "internal server error", err.Error())
 		}
 	}
-	insertId, err := mi.colDb.InsertOne(c.Context(), adata)
+	bbn, _ := json.MarshalIndent(adata, "", "\t")
+	json.Unmarshal(bbn, &insertobj)
+	insertId, err := mi.colDb.InsertOne(c.Context(), insertobj)
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
@@ -603,6 +646,7 @@ func (mi *ModelItem[model]) GetName() string {
 	return mi.name
 }
 func (mi *ModelItem[model]) Generate() {
+	mi.Tags()
 	mi.name = reflect.TypeOf(mi.modelIt).Elem().Name()
 	path := strcase.SnakeCase(mi.name)
 	primary := "id"
@@ -636,8 +680,9 @@ func (mi *ModelItem[model]) Generate() {
 	}
 	if !mi.NoUpdate {
 		mi.endpointsPut = append(mi.endpointsPut, &EndPoint{
-			function:      mi.GetItem,
-			Name:          fmt.Sprintf("Update%s", mi.name),
+			function: mi.UpdateItem,
+			Name:     fmt.Sprintf("Update%s", mi.name),
+
 			Single:        true,
 			PrimaryId:     primary,
 			IsPublic:      mi.IsPublic,
@@ -677,6 +722,6 @@ func NewModel[Model any](collection string) *ModelItem[Model] {
 	item := new(Model)
 
 	mdl := &ModelItem[Model]{collection: collection, model: item, modelIt: item}
-	mdl.Tags()
+
 	return mdl
 }
