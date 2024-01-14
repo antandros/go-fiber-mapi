@@ -3,14 +3,16 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/stoewer/go-strcase"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -34,15 +36,22 @@ type ModelItem[model any] struct {
 	IsPublic               bool
 	NoUpdate               bool
 	LimitNoChange          bool
+	Debug                  bool
 	SoftDelete             bool
 	NoGet                  bool
 	responseLimit          int64
 	NoList                 bool
+	FeildsToTypes          map[string]interface{}
 	collection             string
 	Title                  string
 	Description            string
+	PrimaryId              string
+	PrimaryIdType          string
+	PrimaryIdBsonName      string
 	DescTags               []string
+	QueryParams            interface{}
 	modelType              reflect.Type
+	AfterOnAddFunction     func(item any, c *fiber.Ctx) error
 	UpdateOnAddFunction    func(item M, c *fiber.Ctx) (M, error)
 	UpdateOnUpdateFunction func(item M, c *fiber.Ctx) (M, error)
 	endpointsGet           []*EndPoint
@@ -65,16 +74,39 @@ type Response struct {
 	Error      any    `json:"error,omitempty"`
 	Status     bool   `json:"status,omitempty"`
 }
+type ResultItems struct {
+	Total int `json:"total,omitempty"`
+	Start int `json:"start,omitempty"`
+	Items any `json:"items,omitempty"`
+}
+type ResponseList struct {
+	Response
+	Message    string      `json:"message,omitempty"`
+	StatusCode int         `json:"status_code,omitempty"`
+	Result     ResultItems `json:"result,omitempty"`
+	Error      any         `json:"error,omitempty"`
+	Status     bool        `json:"status,omitempty"`
+}
 
+func (mi *ModelItem[model]) SetDebug(d bool) {
+	mi.Debug = d
+}
+func (mi *ModelItem[model]) SetPublic(d bool) {
+	mi.IsPublic = d
+}
 func (mi *ModelItem[model]) R400(c *fiber.Ctx, message string, data any) error {
 	return mi.RError(c, 400, message, data)
 }
 func (mi *ModelItem[model]) RError(c *fiber.Ctx, code int, message string, data any) error {
+	reqId := c.UserContext().Value("request_id").(string)
 	return c.Status(code).JSON(Response{
 		Message:    message,
 		Status:     false,
 		StatusCode: code,
-		Error:      data,
+		Error: M{
+			"request_id": reqId,
+			"data":       data,
+		},
 	})
 }
 func (mi *ModelItem[model]) R500(c *fiber.Ctx, message string, data any) error {
@@ -91,8 +123,16 @@ func (mi *ModelItem[model]) ROk(c *fiber.Ctx, code int, message string, data any
 		Result:     data,
 	})
 }
+func (mi *ModelItem[model]) ROkList(c *fiber.Ctx, code int, message string, data ResultItems) error {
+	return c.Status(code).JSON(ResponseList{
+		Result: data,
+	})
+}
 func (mi *ModelItem[model]) R200(c *fiber.Ctx, message string, data any) error {
 	return mi.ROk(c, 200, message, data)
+}
+func (mi *ModelItem[model]) R200List(c *fiber.Ctx, message string, data ResultItems) error {
+	return mi.ROkList(c, 200, message, data)
 }
 func (mi *ModelItem[model]) R201(c *fiber.Ctx, message string, data any) error {
 	return mi.ROk(c, 201, message, data)
@@ -167,6 +207,9 @@ func (mi *ModelItem[model]) GetAggregate(c *fiber.Ctx, aggrage []M, requestItem 
 func (mi *ModelItem[model]) UpdateOnAdd(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
 }
+func (mi *ModelItem[model]) AfterOnAdd(fnc func(item any, c *fiber.Ctx) error) {
+	mi.AfterOnAddFunction = fnc
+}
 func (mi *ModelItem[model]) UpdateOnUpdate(fnc func(item M, c *fiber.Ctx) (M, error)) {
 	mi.UpdateOnAddFunction = fnc
 }
@@ -219,26 +262,53 @@ func (mi *ModelItem[model]) DeleteEndPoints() []*EndPoint {
 	return mi.endpointsDelete
 }
 func (mi *ModelItem[model]) SetDb(db *mongo.Database) {
+
 	mi.dbCon = db
+	path := strcase.SnakeCase(mi.name)
+	if mi.collection != "" {
+		mi.colDb = mi.dbCon.Collection(mi.collection)
+	} else {
+
+		mi.colDb = mi.dbCon.Collection(path)
+	}
 }
 func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 	oid := c.Params("id", "")
+	if mi.PrimaryId != "" {
+		oid = c.Params(mi.PrimaryId, "")
+	}
 	if oid != "" {
 		var err error
-		objectId, err := primitive.ObjectIDFromHex(oid)
-		if err != nil {
-			return mi.R400(c, "objectId decode error", M{"error": err})
-		}
 		query := M{}
 		extraQuery := c.Locals("authQuery")
 		if extraQuery != nil {
 			query = extraQuery.(M)
 		}
-		query["_id"] = objectId
+		if mi.PrimaryId != "" {
+
+			if strings.HasPrefix(strings.ToLower(mi.PrimaryIdType), "int") || strings.HasPrefix(strings.ToLower(mi.PrimaryIdType), "uint") {
+				data, err := strconv.Atoi(oid)
+				if err != nil {
+					return mi.R400(c, "item integer decode error", M{"error": err})
+				}
+				query[mi.PrimaryIdBsonName] = data
+			} else {
+				query[mi.PrimaryIdBsonName] = oid
+			}
+			fmt.Println(query[mi.PrimaryIdBsonName])
+		} else {
+			objectId, err := primitive.ObjectIDFromHex(oid)
+			if err != nil {
+				return mi.R400(c, "objectId decode error", M{"error": err})
+			}
+			query["_id"] = objectId
+		}
+
 		if mi.SoftDelete {
 			query["is_deleted"] = false
 
 		}
+		fmt.Println("query", query, mi.PrimaryIdType)
 		item := mi.colDb.FindOne(c.Context(), query)
 		if item.Err() != nil {
 			return mi.R404(c, "item not found")
@@ -252,6 +322,61 @@ func (mi *ModelItem[model]) GetItem(c *fiber.Ctx) error {
 		return mi.R200(c, "", respItem)
 	}
 	return mi.R400(c, "required item path", nil)
+}
+
+func (mi *ModelItem[model]) GenerateQueryParams(data map[string]string, mapData M) M {
+
+	mType := reflect.TypeOf(mi.QueryParams)
+	vType := reflect.ValueOf(mi.QueryParams)
+
+	lenModel := mi.modelType.NumField()
+	pnm := mi.model.(reflect.Type)
+	insertobj := reflect.New(pnm).Interface()
+	mModelValue := reflect.ValueOf(insertobj)
+	lenField := mType.NumField()
+	for i := 0; i < lenField; i++ {
+		field := mType.Field(i)
+		vfield := vType.Field(i)
+		fld := field.Tag
+		ftag := fld.Get("field")
+		jtag := fld.Get("json")
+
+		if ftag != "-" && ftag != "" && jtag != "" {
+			jName := strings.Split(jtag, ",")[0]
+			var mFieldItem *reflect.Value
+			if fieldData, ok := data[jName]; ok {
+
+				for im := 0; im < lenModel; im++ {
+					mField := mi.modelType.Field(im)
+
+					mTag, ok := mField.Tag.Lookup("json")
+					if !ok {
+						mTag, ok = mField.Tag.Lookup("bson")
+					}
+					if ok {
+						name := strings.Split(mTag, ",")[0]
+						if name == ftag {
+							mFieldVal := mModelValue.Elem().Field(im)
+							mFieldItem = &mFieldVal
+						}
+					}
+				}
+				basename := strings.Split(ftag, ",")
+
+				mapData[basename[0]] = ConvertType(fieldData, vfield)
+				if mFieldItem != nil {
+					mapData[basename[0]] = ConvertType(fieldData, *mFieldItem)
+				}
+				if len(basename) > 1 {
+					action := basename[1]
+					if action == "search" {
+						mapData[basename[0]] = M{"$regex": fmt.Sprintf("(?i)%v", mapData[basename[0]]), "$options": "si"}
+					}
+				}
+			}
+		}
+	}
+	return mapData
 }
 
 func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
@@ -269,26 +394,33 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 	if mi.responseLimit > 0 {
 		limit = mi.responseLimit
 	}
-	var params DefaultQuery
-	c.ParamsParser(&params)
-	if !mi.LimitNoChange && params.Limit != 0 {
-		limit = params.Limit
+	fmt.Println(mi.QueryParams)
+	if mi.QueryParams != nil {
+
+		mi.GenerateQueryParams(c.Queries(), query)
+	}
+	fmt.Println(query)
+	if !mi.LimitNoChange && c.QueryInt("limit", 0) != 0 {
+		limit = int64(c.QueryInt("limit", 10))
 	}
 	offset := int64(0)
-	if params.Offset != 0 {
-		offset = params.Offset
+	if c.QueryInt("offset", 0) > 0 {
+		offset = int64(c.QueryInt("offset", 0))
 	}
 	opt.SetSkip(offset)
 	opt.SetLimit(limit)
-
-	cursor, err := mi.colDb.Find(c.Context(), query)
+	if mi.Debug {
+		fmt.Println("query :", query, "offset:", offset, "limit:", limit, "collection:", mi.collection, "collection dd:", mi.colDb.Name())
+		fmt.Println("Limit:", limit, "Skip:", offset)
+	}
+	cursor, err := mi.colDb.Find(c.Context(), query, opt)
 	if err != nil {
 		return mi.R500(c, "server error", err)
 	}
 	pnm := mi.model.(reflect.Type)
-	totalLength := cursor.RemainingBatchLength()
+	cursorCount, _ := mi.colDb.CountDocuments(c.Context(), query)
 	sliceElem := reflect.SliceOf(pnm)
-	respItems := reflect.MakeSlice(sliceElem, totalLength, totalLength).Interface()
+	respItems := reflect.MakeSlice(sliceElem, int(limit), int(limit)).Interface()
 
 	err = cursor.All(c.Context(), &respItems)
 	if err != nil {
@@ -296,14 +428,15 @@ func (mi *ModelItem[model]) GetItems(c *fiber.Ctx) error {
 		return mi.R500(c, "server error", err.Error())
 	}
 
-	return mi.R200(c, "", M{
-		"total": totalLength,
-		"items": respItems,
-		"start": offset,
+	return mi.R200List(c, "", ResultItems{
+		Total: int(cursorCount),
+		Start: int(offset),
+		Items: respItems,
 	})
 
 }
 func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
+
 	pnm := mi.model.(reflect.Type)
 	insertobj := reflect.New(pnm).Interface()
 
@@ -327,12 +460,19 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 			return mi.R500(c, "internal server error", err.Error())
 		}
 	}
-	insertId, err := mi.colDb.InsertOne(c.Context(), adata)
+	strId := c.Params("id", "")
+	if strId == "" {
+		return mi.R400(c, "field error", errors.New("sensor id need"))
+	}
+	insertId, err := primitive.ObjectIDFromHex(strId)
+	if err != nil {
+		return mi.R400(c, "field error", errors.New("sensor id is incorrect"))
+	}
+	_, err = mi.colDb.UpdateByID(c.Context(), insertId, bson.M{"$set": adata})
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
-	objId := insertId.InsertedID.(primitive.ObjectID)
-	itmCur := mi.colDb.FindOne(c.Context(), M{"_id": objId})
+	itmCur := mi.colDb.FindOne(c.Context(), M{"_id": insertId})
 	if itmCur.Err() != nil {
 		return mi.R500(c, "internal server error", itmCur.Err())
 	}
@@ -340,23 +480,26 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
-	return mi.R201(c, "item created", &insertobj)
+	if mi.AfterOnAddFunction != nil {
+		return mi.AfterOnAddFunction(&insertobj, c)
+	}
+	return mi.R200(c, "item updated", &insertobj)
 }
 func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 	pnm := mi.model.(reflect.Type)
+	reqobj := reflect.New(pnm).Interface()
 	insertobj := reflect.New(pnm).Interface()
 
-	err := c.BodyParser(&insertobj)
+	err := c.BodyParser(&reqobj)
 
 	if err != nil {
 		return mi.R400(c, "body parse error", err.Error())
 	}
-	bb, _ := json.MarshalIndent(insertobj, "", "\t")
+	bb, _ := json.MarshalIndent(reqobj, "", "\t")
 	var adata M
 	json.Unmarshal(bb, &adata)
 	if mi.SoftDelete {
 		adata["is_deleted"] = false
-
 	}
 	delete(adata, "id")
 	if mi.UpdateOnAddFunction != nil {
@@ -365,7 +508,9 @@ func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 			return mi.R500(c, "internal server error", err.Error())
 		}
 	}
-	insertId, err := mi.colDb.InsertOne(c.Context(), adata)
+	bbn, _ := json.MarshalIndent(adata, "", "\t")
+	json.Unmarshal(bbn, &insertobj)
+	insertId, err := mi.colDb.InsertOne(c.Context(), insertobj)
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
 	}
@@ -377,6 +522,9 @@ func (mi *ModelItem[model]) CreateItem(c *fiber.Ctx) error {
 	err = itmCur.Decode(insertobj)
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
+	}
+	if mi.AfterOnAddFunction != nil {
+		return mi.AfterOnAddFunction(&insertobj, c)
 	}
 	return mi.R201(c, "item created", &insertobj)
 }
@@ -413,19 +561,41 @@ func (mi *ModelItem[model]) DeleteItem(c *fiber.Ctx) error {
 func (mi *ModelItem[model]) GetModelType() interface{} {
 	return mi.model
 }
+
+type BaseQueryParams struct{}
+
 func (mi *ModelItem[model]) Tags() {
+	mi.modelType = reflect.TypeOf(mi.model).Elem()
 	mi.modelType = reflect.TypeOf(mi.model).Elem()
 	lenField := mi.modelType.NumField()
 	f := []reflect.StructField{}
+	queryInterface := []reflect.StructField{}
 	hasId := false
 	hasDeleted := false
+
+	mapToType := make(map[string]interface{})
+	queryModels := make(map[string]map[string]interface{})
 	for i := 0; i < lenField; i++ {
 		fld := mi.modelType.Field(i).Tag
 		hasJson := fld.Get("json")
 		hasBson := fld.Get("bson")
+		hasQuery := fld.Get("mapi")
+
 		field := mi.modelType.Field(i)
 		name := field.Name
+		mapToType[name] = field.Type
+		if hasQuery != "" {
+			queryModels[name] = make(map[string]interface{})
+			queryModels[name]["tag"] = hasQuery
+			queryModels[name]["type"] = field.Type
+			reqType := strings.Split(hasQuery, ",")
+			if reqType[0] == "primary" {
+				mi.PrimaryId = strings.Split(hasJson, ",")[0]
+				mi.PrimaryIdType = field.Type.Name()
+				mi.PrimaryIdBsonName = strings.Split(hasBson, ",")[0]
+			}
 
+		}
 		if hasBson == "" {
 			hasBson = fmt.Sprintf("%s,omitempty", strcase.SnakeCase(name))
 		}
@@ -435,7 +605,7 @@ func (mi *ModelItem[model]) Tags() {
 		f = append(f, reflect.StructField{
 			Name: name,
 			Type: field.Type,
-			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" bson:"%s"`, hasJson, hasBson)),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" bson:"%s" mapi:"%s"`, hasJson, hasBson, hasQuery)),
 		})
 		if name == "Id" {
 			hasId = true
@@ -461,51 +631,75 @@ func (mi *ModelItem[model]) Tags() {
 			})
 		}
 	}
+
 	mi.model = reflect.StructOf(f)
+	for key, val := range queryModels {
+		queryInterface = append(queryInterface, reflect.StructField{
+			Name: key,
+			Type: val["type"].(reflect.Type),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s" mapi:"%s"`, key, val["tag"].(string))),
+		})
+	}
+
 }
 func (mi *ModelItem[model]) GetName() string {
 	return mi.name
 }
 func (mi *ModelItem[model]) Generate() {
+	mi.Tags()
 	mi.name = reflect.TypeOf(mi.modelIt).Elem().Name()
 	path := strcase.SnakeCase(mi.name)
-	mi.colDb = mi.dbCon.Collection(path)
+	primary := "id"
+	if mi.PrimaryId != "" {
+		primary = mi.PrimaryId
+	}
 	if !mi.NoDelete {
 		mi.endpointsDelete = append(mi.endpointsDelete, &EndPoint{
 			function:      mi.DeleteItem,
-			Name:          uuid.NewString(),
+			Name:          fmt.Sprintf("Delete%s", mi.name),
 			responseModel: Response{},
+			IsPublic:      mi.IsPublic,
+			PrimaryId:     primary,
 			Single:        true,
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoGet {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItem,
-			Name:          uuid.NewString(),
+			Name:          fmt.Sprintf("Get%s", mi.name),
 			Single:        true,
+			IsPublic:      mi.IsPublic,
+			PrimaryId:     primary,
 			responseModel: Response{},
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			QueryParams:   mi.QueryParams,
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoUpdate {
 		mi.endpointsPut = append(mi.endpointsPut, &EndPoint{
-			function:      mi.GetItem,
-			Name:          uuid.NewString(),
+			function: mi.UpdateItem,
+			Name:     fmt.Sprintf("Update%s", mi.name),
+
 			Single:        true,
+			PrimaryId:     primary,
+			IsPublic:      mi.IsPublic,
 			responseModel: Response{},
-			path:          fmt.Sprintf("%s/:id", path),
-			docpath:       fmt.Sprintf("/api/%s/{id}", path),
+			path:          fmt.Sprintf("%s/:%s", path, primary),
+			docpath:       fmt.Sprintf("/api/%s/{%s}", path, primary),
 		})
 	}
 	if !mi.NoList {
 		mi.endpointsGet = append(mi.endpointsGet, &EndPoint{
 			function:      mi.GetItems,
-			Name:          uuid.NewString(),
+			Name:          fmt.Sprintf("List%s", mi.name),
 			List:          true,
-			responseModel: Response{},
+			PrimaryId:     primary,
+			IsPublic:      mi.IsPublic,
+			QueryParams:   mi.QueryParams,
+			responseModel: ResponseList{},
 			path:          fmt.Sprintf("%s/", path),
 			docpath:       fmt.Sprintf("/api/%s/", path),
 		})
@@ -513,9 +707,11 @@ func (mi *ModelItem[model]) Generate() {
 	if !mi.NoInsert {
 		mi.endpointsPost = append(mi.endpointsPost, &EndPoint{
 			function:      mi.CreateItem,
-			Name:          uuid.NewString(),
+			Name:          fmt.Sprintf("Create%s", mi.name),
 			responseModel: Response{},
 			Single:        true,
+			IsPublic:      mi.IsPublic,
+			PrimaryId:     primary,
 			path:          fmt.Sprintf("%s/", path),
 			docpath:       fmt.Sprintf("/api/%s/", path),
 		})
@@ -526,6 +722,6 @@ func NewModel[Model any](collection string) *ModelItem[Model] {
 	item := new(Model)
 
 	mdl := &ModelItem[Model]{collection: collection, model: item, modelIt: item}
-	mdl.Tags()
+
 	return mdl
 }

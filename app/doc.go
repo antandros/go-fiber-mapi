@@ -74,18 +74,22 @@ type GenerateDoc struct {
 	data    M
 }
 
-func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type) M {
+func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type, inRequest bool) M {
 	mapData := M{}
-
+	if mType.Kind() == reflect.Ptr {
+		mType = mType.Elem()
+	}
 	lenField := mType.NumField()
 	for i := 0; i < lenField; i++ {
 		field := mType.Field(i)
 		fld := field.Tag
 		jtag := fld.Get("json")
+		required := fld.Get("required")
 		if jtag != "-" && jtag != "" {
 			nname := strings.Split(jtag, ",")[0]
 			typeText := ""
 			typeFormat := ""
+			typeRef := ""
 			if len(field.Type.Name()) > 2 {
 				switch strings.ToLower(field.Type.Name()[:3]) {
 				case "int":
@@ -100,15 +104,103 @@ func (gd *GenerateDoc) DocGenFieldData(mType reflect.Type) M {
 				case "flo":
 					typeText = "number"
 					typeFormat = field.Type.Name()
+				case "boo":
+					typeText = "boolean"
+					typeFormat = field.Type.Name()
+
 				default:
 					typeText = "string"
-					typeFormat = field.Type.Name()
+
+					if field.Type.Kind() == reflect.Struct {
+
+						key := fmt.Sprintf("%sModel", field.Type.Name())
+						pnm := field.Type
+
+						if _, ok := gd.schemas[key]; !ok {
+							docData := gd.DocGenFieldData(pnm, inRequest)
+							gd.schemas[key] = M{
+								"type":       "object",
+								"properties": docData,
+							}
+							if inRequest {
+								gd.schemas[key].(M)["required"] = required != ""
+							}
+						}
+
+						typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+						typeFormat = key
+						typeText = "object"
+					} else if field.Type.Kind() == reflect.String {
+						typeText = "string"
+
+					} else if field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Array {
+						if field.Type.Elem().Kind() == reflect.Struct {
+							key := fmt.Sprintf("%sModel", field.Type.Name())
+							pnm := field.Type
+
+							if _, ok := gd.schemas[key]; !ok {
+								docData := gd.DocGenFieldData(pnm, inRequest)
+								gd.schemas[key] = M{
+									"type":       "object",
+									"properties": docData,
+								}
+								if inRequest {
+									gd.schemas[key].(M)["required"] = required != ""
+								}
+							}
+
+							typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+							typeText = "array"
+						}
+					} else {
+
+						typeFormat = field.Type.Name()
+
+					}
+
 				}
 
+			} else if field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Array {
+				if field.Type.Elem().Kind() == reflect.Struct {
+					pnm := field.Type.Elem()
+					key := fmt.Sprintf("%sModel", pnm.Name())
+
+					if _, ok := gd.schemas[key]; !ok {
+						docData := gd.DocGenFieldData(pnm, inRequest)
+						gd.schemas[key] = M{
+							"type":       "object",
+							"properties": docData,
+						}
+					}
+
+					typeRef = fmt.Sprintf("#/components/schemas/%s", key)
+					typeText = "array"
+				}
+			}
+			if field.Type.Kind() == reflect.Slice && typeText == "" {
+				typeText = "array"
+			}
+			if typeText == "" && field.Type.Kind().String() == "map" {
+				typeText = "object"
 			}
 			mapData[nname] = M{
 				"type":   typeText,
 				"format": typeFormat,
+			}
+			if typeText == "array" {
+				mapData[nname].(M)["items"] = M{
+					"$ref": typeRef,
+				}
+				mapData[nname].(M)["format"] = "array"
+			} else {
+				if typeRef != "" {
+					mapData[nname].(M)["$ref"] = typeRef
+
+					if inRequest {
+						mapData[nname].(M)["required"] = required != ""
+					}
+
+				}
 			}
 
 		}
@@ -122,12 +214,12 @@ func (gd *GenerateDoc) DocTags(mi ModelInterface) M {
 	respItem := reflect.New(pnm).Elem().Addr().Interface()
 	mType := reflect.TypeOf(respItem).Elem()
 
-	return gd.DocGenFieldData(mType)
+	return gd.DocGenFieldData(mType, false)
 }
-func (gd *GenerateDoc) DocTagsCustom(m any) M {
+func (gd *GenerateDoc) DocTagsCustom(m any, inRequest bool) M {
 	mType := reflect.TypeOf(m)
 
-	return gd.DocGenFieldData(mType)
+	return gd.DocGenFieldData(mType, inRequest)
 }
 
 func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint, isPost bool, isPut bool, isDelete bool) {
@@ -150,7 +242,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 
 		if !isPost {
 			parameters = append(parameters, &DocParameter{
-				Name:     "id",
+				Name:     endpoint.PrimaryId,
 				In:       "path",
 				Required: true,
 				Schema: struct {
@@ -172,12 +264,22 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 	}
 	if endpoint.List {
 		summary = fmt.Sprintf("Returns a all %s", model.GetName())
-		data := gd.DocTagsCustom(DefaultQuery{})
+		var data M
+		if endpoint.QueryParams != nil {
+			data = gd.DocTagsCustom(endpoint.QueryParams, true)
+		} else {
+
+			data = gd.DocTagsCustom(DefaultQuery{}, true)
+		}
 		for key, val := range data {
+			isReq := false
+			if val.(M)["required"] != nil {
+				isReq = val.(M)["required"].(bool)
+			}
 			parameters = append(parameters, &DocParameter{
 				Name:     key,
 				In:       "query",
-				Required: false,
+				Required: isReq,
 				Schema: struct {
 					Type    string "json:\"type,omitempty\""
 					Maximum int    "json:\"maximum,omitempty\""
@@ -208,7 +310,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 		}
 		parameters = parameters[:0]
 		if endpoint.requestbody != nil {
-			data := gd.DocTagsCustom(endpoint.requestbody)
+			data := gd.DocTagsCustom(endpoint.requestbody, true)
 			for key, val := range data {
 				parameters = append(parameters, &DocParameter{
 					Name:     key,
@@ -232,7 +334,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 			ref := fmt.Sprintf("#/components/schemas/%s", kk)
 			gd.schemas[kk] = M{
 				"type":       "object",
-				"properties": gd.DocTagsCustom(endpoint.responseModel),
+				"properties": gd.DocTagsCustom(endpoint.responseModel, false),
 			}
 			responseBase = M{
 				"type": "array",
@@ -242,6 +344,7 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 			}
 		}
 	}
+
 	returnSchema := DocResponse{
 		Description: "Response",
 		Content: M{"application/json": M{
@@ -261,6 +364,40 @@ func (gd *GenerateDoc) GenerateDocItem(model ModelInterface, endpoint *EndPoint,
 				},
 			},
 		}},
+	}
+	if endpoint.List {
+		returnSchema = DocResponse{
+			Description: "Response",
+			Content: M{"application/json": M{
+				"schema": M{
+					"type": "object",
+					"properties": M{
+						"message": M{
+							"type": "string",
+						},
+						"status_code": M{
+							"type": "integer",
+						},
+						"status": M{
+							"type": "boolean",
+						},
+						"result": M{
+							"type": "object",
+							"properties": M{
+								"start": M{
+									"type": "integer",
+								},
+								"total": M{
+									"type": "integer",
+								},
+								"items": responseBase,
+							},
+						},
+					},
+				},
+			}},
+		}
+
 	}
 	notFoundResponse := DocResponse{
 		Description: "item not found",
@@ -422,6 +559,32 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 		if !endpoint.IsPublic {
 			resp["401"] = unauthorizedResponse
 		}
+		kk := slug.Make(endpoint.Name)
+		if len(endpoint.Name) == 36 {
+			kk = slug.Make(endpoint.path)
+		}
+		if endpoint.responseModel != nil {
+
+			key := fmt.Sprintf("Response%s", kk)
+			gd.schemas[key] = M{
+				"type":       "object",
+				"properties": gd.DocTagsCustom(endpoint.responseModel, false),
+			}
+			ref := fmt.Sprintf("#/components/schemas/%s", key)
+
+			resp["200"] = DocResponse{
+				Description: fmt.Sprintf("%s model", endpoint.Name),
+				Content: M{"application/json": M{
+					"schema": M{
+						"$ref": ref,
+					},
+				}},
+			}
+		}
+		if len(endpoint.Tags) > 0 {
+			tags = endpoint.Tags
+		}
+
 		method := &DocMethodInfo{
 			Summary:    summary,
 			Parameters: parameters,
@@ -429,7 +592,7 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 			Tags:       tags,
 			Security:   sec,
 		}
-		kk := slug.Make(endpoint.Name)
+
 		if endpoint.requestbody != nil {
 			if endpoint.IsPost {
 
@@ -437,7 +600,7 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 
 				gd.schemas[key] = M{
 					"type":       "object",
-					"properties": gd.DocTagsCustom(endpoint.requestbody),
+					"properties": gd.DocTagsCustom(endpoint.requestbody, false),
 				}
 				ref := fmt.Sprintf("#/components/schemas/%s", key)
 
@@ -449,24 +612,26 @@ func (gd *GenerateDoc) GenerateOtherEndpoints() {
 						},
 					}},
 				}
+			} else {
+				data := gd.DocTagsCustom(endpoint.requestbody, false)
+				for key, val := range data {
+					parameters = append(parameters, &DocParameter{
+						Name:     key,
+						In:       "query",
+						Required: false,
+						Schema: struct {
+							Type    string "json:\"type,omitempty\""
+							Maximum int    "json:\"maximum,omitempty\""
+							Format  string "json:\"format,omitempty\""
+						}{
+							Type: val.(M)["type"].(string),
+						},
+					})
+				}
+				method.Parameters = parameters
 			}
 		}
-		if endpoint.responseModel != nil {
-			key := fmt.Sprintf("Response%s", kk)
-			gd.schemas[key] = M{
-				"type":       "object",
-				"properties": gd.DocTagsCustom(endpoint.responseModel),
-			}
-			ref := fmt.Sprintf("#/components/schemas/%s", key)
-			method.Responses["200"] = DocResponse{
-				Description: fmt.Sprintf("%s model", endpoint.Name),
-				Content: M{"application/json": M{
-					"schema": M{
-						"$ref": ref,
-					},
-				}},
-			}
-		}
+
 		var endpointItem DocEndPoint
 
 		if doc, ok := gd.paths[endpoint.docpath].(DocEndPoint); ok {
@@ -546,27 +711,27 @@ func (gd *GenerateDoc) Generate() {
 			},
 		},
 	}
+	var servers []M
+	for _, uri := range gd.app.BaseURL {
+		servers = append(servers, M{"url": uri})
+	}
 	data := M{
 		"paths": gd.paths,
 		"components": M{
 			"schemas": gd.schemas,
-			"securitySchemes": M{
+			/*"securitySchemes": M{
 				"bearerAuth": M{
 					"type":         "http",
 					"scheme":       "bearer",
 					"bearerFormat": "JWT",
 				},
-			},
+			},*/
 		},
-		"security": []M{
+		/*"security": []M{
 			M{"bearerAuth": []M{}},
-		},
+		},*/
 		"openapi": "3.0.3",
-		"servers": []M{
-			M{
-				"url": gd.app.BaseURL,
-			},
-		},
+		"servers": servers,
 		"info": DocInfo{
 			Version: "1.0",
 			Title:   gd.app.Name,
@@ -628,7 +793,7 @@ func NewDoc(app *App) *GenerateDoc {
 	}
 
 	doc.Generate()
-	app.RegisterGetEndpoint("/doc.json", true, nil, nil, doc.Response)
-	app.RegisterGetEndpoint("/doc/", true, nil, nil, doc.ResponseUI)
+	app.RegisterGetEndpoint("/doc.json", true, nil, nil, doc.Response, nil)
+	app.RegisterGetEndpoint("/doc/", true, nil, nil, doc.ResponseUI, nil)
 	return doc
 }

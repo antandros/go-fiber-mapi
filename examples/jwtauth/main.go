@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	gofibermapi "github.com/antandros/go-fiber-mapi"
@@ -15,11 +13,8 @@ import (
 )
 
 type PriceTimes struct {
-	Source    string
-	Ticker    string
-	Price     float64
-	Time      time.Time
-	CompanyId primitive.ObjectID
+	Company Company   `json:"company,omitempty"`
+	Zumpany []Company `json:"zumpany,omitempty"`
 }
 
 type PriceTimesXN struct {
@@ -31,7 +26,7 @@ type PriceTimesXN struct {
 }
 
 type Company struct {
-	Name string
+	Name string `json:"name,omitempty"`
 }
 type Login struct {
 	Mail     string `json:"mail,omitempty"`
@@ -88,73 +83,29 @@ func loginFunc(dapp *app.App, c *fiber.Ctx) error {
 		})
 	}
 }
+
+type PriceQuery struct {
+	StartDate string               `json:"start_date,omitempty" field:"test"`
+	EndDate   string               `json:"end_date,omitempty"  field:"test"`
+	Ticker    string               `json:"ticker,omitempty"  field:"test"`
+	Fiat      string               `json:"fiat,omitempty"  field:"test"`
+	Limit     int                  `json:"limit,omitempty"  field:"test"`
+	Offset    int                  `json:"offset,omitempty"  field:"test"`
+	Aggregate string               `json:"aggregate,omitempty"  field:"test"`
+	PID       primitive.ObjectID   `json:"pid,omitempty"  field:"test"`
+	PD        primitive.DateTime   `json:"pd,omitempty"  field:"test"`
+	PDec      primitive.Decimal128 `json:"pdec,omitempty"  field:"test"`
+}
+
 func main() {
 	dapp := gofibermapi.NewApp("mongodb://root:example@10.4.0.102:27017/", "test_fiber_api", "./")
-	prices := app.NewModel[PriceTimes]("price_times")
-	prices.SoftDelete = true
-	prices.AddAggrageEndPoint("test2", "get", LoginResponse{}, Login{}, []app.M{})
-	prices.AddAggrageEndPoint("test444/*/asdasd/:Q/", "get", LoginResponse{}, Login{}, []app.M{})
-	prices.UpdateOnAdd(func(item app.M, c *fiber.Ctx) (app.M, error) {
-		cid := c.Locals("cid")
-		if cid != nil {
-			item["company_id"] = cid.(primitive.ObjectID)
-			return item, nil
-		} else {
-			return nil, errors.New("cid not found")
-		}
-	})
-	/*prices.UpdateOnUpdate(func(item app.M, c *fiber.Ctx) (app.M, error) {
-		return nil, nil
-	})*/
-	prices2 := app.NewModel[PriceTimesXN]("price_times2")
+	dapp.SaveLog = true
+	dapp.BaseURL = []string{"http://localhost:8766", "http://127.0.0.1:8766"}
+	dapp.SetCors([]string{"http://localhost:8766", "http://127.0.0.1:8766"}, []string{})
+	prices2 := app.NewModel[PriceTimes]("price_times2")
 	prices2.SoftDelete = true
-	prices2.AddAggrageEndPoint("test3", "get", LoginResponse{}, Login{}, []app.M{
-		app.M{"$match": app.M{
-			"company_id": "123",
-		}},
-	})
+	prices2.QueryParams = PriceQuery{}
+
 	dapp.RegisterModel(prices2)
-	dapp.RegisterModel(prices)
-	dapp.RegisterPostEndpoint("/login", true, Login{}, LoginResponse{}, func(c *fiber.Ctx) error {
-		return loginFunc(dapp, c)
-	})
-	dapp.SetAuthMiddleware(func(c *fiber.Ctx) (app.M, error) {
-		var tokenString string
-		tokenData := c.Get("authorization", "")
-		if tokenData == "" {
-			return nil, errors.New("authorization header required")
-		}
-		tokeItem := strings.Split(tokenData, " ")
-		if !strings.EqualFold(tokeItem[0], "Bearer") {
-			return nil, errors.New("authorization header must be bearer")
-		}
-		tokenString = tokeItem[1]
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			return []byte("AllYourBase"), nil
-		})
-		if err != nil {
-
-			if errors.Is(err, jwt.ErrTokenMalformed) {
-				return app.M{}, errors.New("That's not even a token")
-			} else if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-				// Invalid signature
-				return app.M{}, errors.New("Invalid signature")
-			} else if errors.Is(err, jwt.ErrTokenExpired) || errors.Is(err, jwt.ErrTokenNotValidYet) {
-				// Token is either expired or not active yet
-				fmt.Println("ErrTokenExpired", errors.Is(err, jwt.ErrTokenExpired))
-				return app.M{}, errors.New("Timing is everything")
-			} else {
-				return app.M{}, errors.New(fmt.Sprintf("Couldn't handle this token: %v", err))
-			}
-		} else {
-			subj, _ := token.Claims.GetSubject()
-			uid, _ := token.Claims.GetIssuer()
-			cid, _ := primitive.ObjectIDFromHex(subj)
-			c.Locals("uid", uid)
-			c.Locals("cid", cid)
-			return app.M{"company_id": cid}, nil
-		}
-
-	})
 	dapp.Run(":8766")
 }
