@@ -445,9 +445,10 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 	if err != nil {
 		return mi.R400(c, "body parse error", err.Error())
 	}
-	bb, _ := json.MarshalIndent(insertobj, "", "\t")
+	//bb, _ := json.MarshalIndent(insertobj, "", "\t")
 	var adata M
-	json.Unmarshal(bb, &adata)
+	json.Unmarshal(c.Body(), &adata)
+
 	if mi.SoftDelete {
 		adata["is_deleted"] = false
 
@@ -468,6 +469,8 @@ func (mi *ModelItem[model]) UpdateItem(c *fiber.Ctx) error {
 	if err != nil {
 		return mi.R400(c, "field error", errors.New("sensor id is incorrect"))
 	}
+	fmt.Println("called update", bson.M{"$set": adata})
+
 	_, err = mi.colDb.UpdateByID(c.Context(), insertId, bson.M{"$set": adata})
 	if err != nil {
 		return mi.R500(c, "internal server error", err.Error())
